@@ -70,12 +70,12 @@ export function ChatPanel() {
     <div className="flex flex-col h-full bg-white dark:bg-zinc-950 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
       {/* Header */}
       <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-2 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shrink-0">
           <Sparkles className="w-4 h-4 text-white" />
         </div>
-        <div className="flex-1">
-          <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">Chat to edit</p>
-          <p className="text-[11px] text-zinc-500">Natural-language schedule editor</p>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 truncate">Chat to edit</p>
+          <p className="text-[11px] text-zinc-500 truncate">Edits apply live to the schedule on the left ←</p>
         </div>
       </div>
 

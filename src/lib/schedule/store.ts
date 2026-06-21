@@ -41,6 +41,10 @@ interface ScheduleStore {
   history: HistoryEntry[];             // newest first
   redoStack: HistoryEntry[];
 
+  // Edit visibility flag — true when there are unseen edits (used to pulse
+  // the "Edited" toggle in the preview pane).
+  hasUnviewedEdits: boolean;
+
   // File status
   isParsing: boolean;
   parseError: string | null;
@@ -56,6 +60,7 @@ interface ScheduleStore {
   setChatError: (e: string | null) => void;
   setParsing: (b: boolean, err?: string | null) => void;
   directEdit: (mutator: (draft: ScheduleDocument) => void, summary: string) => void;
+  markEditsViewed: () => void;
 }
 
 function clone<T>(v: T): T {
@@ -226,6 +231,7 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
   redoStack: [],
   isParsing: false,
   parseError: null,
+  hasUnviewedEdits: false,
 
   loadDocument: (doc, previewUrl) => {
     set({
@@ -244,6 +250,7 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
       parseError: null,
       chatError: null,
       isChatting: false,
+      hasUnviewedEdits: false,
     });
   },
 
@@ -258,6 +265,7 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
     parseError: null,
     chatError: null,
     isChatting: false,
+    hasUnviewedEdits: false,
   }),
 
   applyOps: (ops, summary) => {
@@ -278,6 +286,7 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
         ts: Date.now(),
       }, ...state.history].slice(0, 50),
       redoStack: [],
+      hasUnviewedEdits: true,
     });
   },
 
@@ -320,6 +329,8 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
   setChatError: e => set({ chatError: e }),
   setParsing: (b, err = null) => set({ isParsing: b, parseError: err }),
 
+  markEditsViewed: () => set({ hasUnviewedEdits: false }),
+
   directEdit: (mutator, summary) => {
     const state = get();
     if (!state.current) return;
@@ -337,6 +348,7 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
         ts: Date.now(),
       }, ...state.history].slice(0, 50),
       redoStack: [],
+      hasUnviewedEdits: true,
     });
   },
 }));

@@ -64,7 +64,7 @@ export default function Home() {
         {!current ? (
           <LandingScreen />
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] xl:grid-cols-[1fr_440px] gap-4 lg:gap-5 h-[calc(100vh-120px)] min-h-[600px]">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] xl:grid-cols-[1fr_380px] gap-4 lg:gap-5 h-[calc(100vh-120px)] min-h-[600px]">
             <div className="min-h-0">
               <PreviewPane onBackToUpload={() => { if (confirm('Discard current schedule and upload a new one?')) reset(); }} />
             </div>
