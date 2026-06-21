@@ -1,66 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ZAI from 'z-ai-web-dev-sdk';
-import type { ScheduleDocument, EditOp, ChatResponse } from '@/lib/schedule-types';
+import type { InlineScheduleDocument, InlineEditOp } from '@/lib/inline-types';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-const SYSTEM_PROMPT = `You are the in-app assistant for a weekly studio schedule editor.
-The user is looking at a visual schedule that EXACTLY matches the original uploaded PDF — a lime (or sky-blue) top band with scrolling ticker text, a big bold "STUDIO SCHEDULE" title, a circular location badge in the corner, an italic date in the accent color, BEGINNER/INTERMEDIATE/ADVANCED class level rows, and 7 day columns (Mon-Sun) with class rows.
+const SYSTEM_PROMPT = `You are the in-app assistant for an INLINE schedule editor.
+The user uploaded a PDF schedule. We show the EXACT original PDF as a background image and overlay editable text on top. The user can edit any text by clicking it, or by chatting with you.
 
-Your job:
-1. Understand the user's intent.
-2. Emit a structured set of edit operations that, when applied to the current schedule, achieve their request.
-3. CRITICAL: NEVER change the overall styling / layout / theme bands / structure unless the user EXPLICITLY asks for it. The schedule must always look the same as the original — only the content / values / specific colors the user mentions should change.
+Your job: translate the user's natural-language request into edit operations that change ONLY the text content of specific spans. NEVER change the layout, structure, colors (unless explicitly asked), or any non-text element.
 
 You MUST respond with strict JSON (no markdown fences, no commentary) of the shape:
 
 {
-  "reply": "short user-facing message describing what you changed",
-  "summary": "one-line change log entry",
+  "reply": "short user-facing message",
+  "summary": "one-line change log",
   "operations": [ ...edit ops... ]
 }
 
 Supported edit operations (use only these):
 
-- { "type": "set", "path": "studioName|location|dateRange|tagline", "value": string }
-- { "type": "patchTheme", "changes": { "accent": "#hex", "topBandBg": "#hex", "background": "#hex", "primaryText": "#hex", "bodyText": "#hex", "soldOutBg": "#hex", "trainerChoiceBg": "#hex" } }
-- { "type": "setBandColor", "level": "BEGINNER|INTERMEDIATE|ADVANCED", "color": "#hex" }
-- { "type": "replaceTicker", "bands": [ { "text": "...", "textColor": "#hex", "bgColor": "transparent", "fontSize": 7, "italic": false } ] }
-- { "type": "addClass", "dayName": "MONDAY", "time": "7:30 AM", "className": "MAT 57", "instructor": "Reshma", "level": "BEGINNER", "highlight": "none|sold-out|trainer-choice", "note": "(optional)" }
-- { "type": "removeClass", "dayName": "MONDAY", "match": { "time": "7:30 AM" } | { "className": "MAT 57" } }
-- { "type": "updateClass", "dayName": "MONDAY", "match": { "time": "7:30 AM" } | { "className": "MAT 57" }, "changes": { "time": "...", "className": "...", "instructor": "...", "level": "..." } }
-- { "type": "updateAll", "match": { "instructor": "Reshma" }, "changes": { "instructor": "Anjali" } }
-- { "type": "addDay", "dayName": "SUNDAY" }
-- { "type": "removeDay", "dayName": "SUNDAY" }
-- { "type": "replaceClassLevels", "rows": [ { "level": "BEGINNER", "classes": ["BARRE 57"] } ] }
-- { "type": "swapInstructor", "from": "Reshma", "to": "Anjali" }
-- { "type": "setFont", "family": "heading|body|display|ticker", "value": "Inter, sans-serif" }
-- { "type": "setClassHighlight", "dayName": "MONDAY", "match": { "time": "7:30 PM" }, "highlight": "sold-out|trainer-choice|none", "note": "(HARRY STYLES VS JT)" }
+- { "type": "replaceText", "find": "Reshma", "replace": "Anjali" }
+  → Finds any span containing "Reshma" (case-insensitive) and replaces that substring with "Anjali". Use this for instructor swaps, class name changes, etc.
 
-CRITICAL RULES (READ CAREFULLY):
-- PRESERVE THE ORIGINAL LOOK. Do NOT change accent / topBandBg / background / fonts unless the user EXPLICITLY asks ("change the accent to pink", "make the top band blue").
-- When the user asks "swap Reshma with Anjali", use swapInstructor — do NOT change anything else.
-- When the user asks "add a class", only add that one class — don't touch other rows or theme.
-- When the user asks "mark the 7:30 PM Monday class as sold out", use setClassHighlight with highlight="sold-out".
-- When the user asks "remove the special note", use setClassHighlight with highlight="none" and note="".
-- "match" objects must use one of { time, className, instructor } — pick the most specific one.
-- For "level" use BEGINNER / INTERMEDIATE / ADVANCED only.
-- For "highlight" use none / sold-out / trainer-choice only.
-- Reply in the user's language. Keep "reply" under 60 words.
+- { "type": "setSpanTextByContent", "find": "June 1st - June 7th 2026", "text": "July 7th - July 13th 2026" }
+  → Finds the span containing the find text and replaces the ENTIRE span text with the new text. Use this when the user wants to change a specific value (date, location name, etc.)
+
+- { "type": "setSpansColor", "find": "STUDIO SCHEDULE", "color": "#ff5577" }
+  → Finds spans containing the find text and changes their text COLOR to the given hex. Only use this when the user explicitly asks to change a text color.
+
+CRITICAL RULES:
+- NEVER change layout, structure, or background colors. Only text content (and text color when explicitly asked) can change.
+- For instructor swaps, use replaceText — it handles all occurrences at once.
+- For date/location/title changes, use setSpanTextByContent with enough of the original text to uniquely identify the span.
+- Match the user's language for the reply. Keep "reply" under 60 words.
+- If the request would require changing layout or non-text elements (e.g. "add a new class", "remove a row", "change the background"), politely explain that only existing text can be edited inline, and suggest the closest text-only alternative.
 - Output ONLY the JSON.`;
 
 interface ChatRequestBody {
   message: string;
-  document: ScheduleDocument;
+  document: InlineScheduleDocument;
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
 function extractJson(text: string): unknown {
-  // Strip markdown fences if present
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const candidate = fenced ? fenced[1] : text;
-  // Find the first balanced { ... }
   const start = candidate.indexOf('{');
   if (start < 0) throw new Error('No JSON in response');
   let depth = 0;
@@ -83,6 +68,24 @@ function extractJson(text: string): unknown {
   throw new Error('Unbalanced JSON in response');
 }
 
+/** Build a compact textual summary of the document's spans for the LLM context. */
+function buildDocSummary(doc: InlineScheduleDocument): string {
+  const lines: string[] = [];
+  lines.push(`Document has ${doc.pages.length} page(s). Editable text spans:`);
+  for (const page of doc.pages) {
+    lines.push(`\n=== Page ${page.index + 1} (${page.spans.length} spans) ===`);
+    // Only include spans that look like meaningful text (skip tiny fragments)
+    for (const span of page.spans) {
+      const t = span.text.trim();
+      if (t.length < 2) continue;
+      // Skip marquee/ticker repeats (they're very long and duplicate)
+      if (t.length > 120 && t.includes('•')) continue;
+      lines.push(`  [${span.id}] "${t}"`);
+    }
+  }
+  return lines.join('\n');
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as ChatRequestBody;
@@ -100,7 +103,7 @@ export async function POST(req: NextRequest) {
 
     const messages = [
       { role: 'assistant' as const, content: SYSTEM_PROMPT },
-      { role: 'user' as const, content: `CURRENT SCHEDULE:\n${docSummary}` },
+      { role: 'user' as const, content: `CURRENT DOCUMENT SPANS:\n${docSummary}` },
       ...historyMessages,
       { role: 'user' as const, content: body.message },
     ];
@@ -111,15 +114,13 @@ export async function POST(req: NextRequest) {
     });
 
     const raw = completion.choices[0]?.message?.content ?? '';
-    let parsed: ChatResponse;
+    let parsed: { reply?: string; summary?: string; operations?: InlineEditOp[] };
     try {
-      parsed = extractJson(raw) as ChatResponse;
+      parsed = extractJson(raw) as typeof parsed;
     } catch {
-      // If JSON parse fails, return the raw text as a friendly reply with no ops
-      parsed = { reply: raw || "I couldn't process that.", operations: [] };
+      parsed = { reply: raw || "I couldn't process that." };
     }
 
-    // Defensive: ensure operations is an array
     if (!Array.isArray(parsed.operations)) parsed.operations = [];
     if (typeof parsed.reply !== 'string') parsed.reply = 'Done.';
     if (typeof parsed.summary !== 'string') parsed.summary = '';
@@ -135,34 +136,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function isValidOp(op: unknown): op is EditOp {
+function isValidOp(op: unknown): op is InlineEditOp {
   if (!op || typeof op !== 'object') return false;
   const o = op as Record<string, unknown>;
-  return typeof o.type === 'string';
-}
-
-/** Build a compact textual summary of the schedule for the LLM context. */
-function buildDocSummary(doc: ScheduleDocument): string {
-  const lines: string[] = [];
-  lines.push(`# ${doc.studioName} — ${doc.location}`);
-  lines.push(`Date: ${doc.dateRange}`);
-  if (doc.tagline) lines.push(`Tagline: ${doc.tagline}`);
-  if (doc.tickerBands.length) {
-    lines.push(`Ticker bands:`);
-    doc.tickerBands.forEach(b => lines.push(`  - "${b.text}" (color ${b.textColor}, size ${b.fontSize})`));
-  }
-  if (doc.classLevels.length) {
-    lines.push(`Class levels:`);
-    doc.classLevels.forEach(r => lines.push(`  - ${r.level}: ${r.classes.join(', ')}`));
-  }
-  lines.push(`Theme:`);
-  lines.push(`  accent=${doc.theme.accent} background=${doc.theme.background} primaryText=${doc.theme.primaryText} bodyText=${doc.theme.bodyText} cardBg=${doc.theme.cardBg}`);
-  lines.push(`  bandColors: BEGINNER=${doc.theme.bandColors.BEGINNER} INTERMEDIATE=${doc.theme.bandColors.INTERMEDIATE} ADVANCED=${doc.theme.bandColors.ADVANCED}`);
-  lines.push(`  fonts: heading=${doc.theme.fontFamilyHeading} body=${doc.theme.fontFamilyBody} display=${doc.theme.fontFamilyDisplay}`);
-  lines.push(`Days:`);
-  doc.days.forEach(d => {
-    lines.push(`  ${d.name}:`);
-    d.classes.forEach(c => lines.push(`    ${c.time} | ${c.className} | ${c.instructor} | ${c.level}`));
-  });
-  return lines.join('\n');
+  if (typeof o.type !== 'string') return false;
+  return ['replaceText', 'setSpanText', 'setSpanColor', 'setSpansColor', 'setSpanTextByContent'].includes(o.type);
 }

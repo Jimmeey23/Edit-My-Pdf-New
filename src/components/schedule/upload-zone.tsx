@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useCallback, useRef, useState } from 'react';
-import { Upload, FileText, Image as ImageIcon, Loader2, X } from 'lucide-react';
-import { useScheduleStore } from '@/lib/schedule/store';
+import { Upload, FileText, Loader2, X } from 'lucide-react';
+import { useInlineStore } from '@/lib/inline-store';
 import { cn } from '@/lib/utils';
 
 export function UploadZone() {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { setParsing, loadDocument, parseError, isParsing } = useScheduleStore();
+  const { setParsing, loadDocument, parseError, isParsing } = useInlineStore();
 
   const handleFile = useCallback(async (file: File) => {
     setParsing(true, null);
@@ -26,8 +26,6 @@ export function UploadZone() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setParsing(false, msg);
-    } finally {
-      // If parsing succeeded, isParsing will be set false by loadDocument
     }
   }, [loadDocument, setParsing]);
 
@@ -38,40 +36,30 @@ export function UploadZone() {
     if (file) handleFile(file);
   }, [handleFile]);
 
-  const onDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const onDragLeave = useCallback(() => setIsDragging(false), []);
-
-  const onPick = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleFile(file);
-    // Reset input so same file can be re-uploaded
-    e.target.value = '';
-  }, [handleFile]);
-
   return (
     <div className="w-full">
       <div
         onDrop={onDrop}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
         onClick={() => inputRef.current?.click()}
         className={cn(
           "relative cursor-pointer rounded-2xl border-2 border-dashed transition-all",
           "flex flex-col items-center justify-center text-center p-10 min-h-[280px]",
           isDragging
-            ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 scale-[1.01]"
+            ? "border-emerald-400 bg-emerald-50 scale-[1.01]"
             : "border-zinc-300 dark:border-zinc-700 hover:border-emerald-400 hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
         )}
       >
         <input
           ref={inputRef}
           type="file"
-          accept=".pdf,.png,.jpg,.jpeg,.webp,.docx"
-          onChange={onPick}
+          accept=".pdf"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleFile(file);
+            e.target.value = '';
+          }}
           className="hidden"
         />
 
@@ -79,10 +67,10 @@ export function UploadZone() {
           <>
             <Loader2 className="w-10 h-10 text-emerald-500 animate-spin mb-4" />
             <p className="text-base font-medium text-zinc-700 dark:text-zinc-200">
-              Parsing your schedule…
+              Loading your schedule…
             </p>
             <p className="text-sm text-zinc-500 mt-1">
-              Extracting text, classes, instructors & theme
+              Extracting text spans for inline editing
             </p>
           </>
         ) : (
@@ -91,20 +79,14 @@ export function UploadZone() {
               <Upload className="w-7 h-7 text-white" />
             </div>
             <p className="text-base font-semibold text-zinc-800 dark:text-zinc-100">
-              Drop your schedule here
+              Drop your schedule PDF here
             </p>
             <p className="text-sm text-zinc-500 mt-1">
               or click to browse
             </p>
             <div className="flex items-center gap-4 mt-5 text-xs text-zinc-500">
               <span className="flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5" /> PDF
-              </span>
-              <span className="flex items-center gap-1.5">
-                <ImageIcon className="w-3.5 h-3.5" /> PNG / JPG
-              </span>
-              <span className="flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5" /> DOCX
+                <FileText className="w-3.5 h-3.5" /> PDF only (for inline editing)
               </span>
             </div>
           </>
