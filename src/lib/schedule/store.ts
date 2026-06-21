@@ -5,6 +5,7 @@ import type {
   ScheduleDocument,
   ScheduleClass,
   ClassLevel,
+  ClassHighlight,
   EditOp,
   TickerBand,
   ScheduleTheme,
@@ -106,12 +107,17 @@ function applyOp(doc: ScheduleDocument, op: EditOp): ScheduleDocument {
       const dayName = String((op as any).dayName).toUpperCase();
       const day = next.days.find(d => d.name === dayName);
       if (day) {
+        const opCls = (op as any).cls || (op as any);
         const newCls: ScheduleClass = {
           id: uid(`${dayName}-`),
-          time: String((op as any).time || ''),
-          className: String((op as any).className || ''),
-          instructor: String((op as any).instructor || ''),
-          level: (['BEGINNER', 'INTERMEDIATE', 'ADVANCED'].includes((op as any).level) ? (op as any).level : 'BEGINNER') as ClassLevel,
+          time: String(opCls.time || (op as any).time || ''),
+          className: String(opCls.className || (op as any).className || ''),
+          instructor: String(opCls.instructor || (op as any).instructor || ''),
+          level: (['BEGINNER', 'INTERMEDIATE', 'ADVANCED'].includes(opCls.level || (op as any).level) ? (opCls.level || (op as any).level) : 'BEGINNER') as ClassLevel,
+          highlight: (['none', 'sold-out', 'trainer-choice', 'custom'].includes(opCls.highlight) ? opCls.highlight : 'none') as ClassHighlight | undefined,
+          note: typeof opCls.note === 'string' ? opCls.note : undefined,
+          bgColor: typeof opCls.bgColor === 'string' ? opCls.bgColor : undefined,
+          textColor: typeof opCls.textColor === 'string' ? opCls.textColor : undefined,
         };
         day.classes.push(newCls);
         // Re-sort by time
@@ -188,6 +194,23 @@ function applyOp(doc: ScheduleDocument, op: EditOp): ScheduleDocument {
       if (family === 'heading') next.theme.fontFamilyHeading = value;
       else if (family === 'body') next.theme.fontFamilyBody = value;
       else if (family === 'display') next.theme.fontFamilyDisplay = value;
+      else if (family === 'ticker') next.theme.fontFamilyTicker = value;
+      break;
+    }
+    case 'setClassHighlight': {
+      const dayName = String((op as any).dayName).toUpperCase();
+      const match = (op as any).match || {};
+      const highlight = String((op as any).highlight || 'none') as ClassHighlight;
+      const note = (op as any).note !== undefined ? String((op as any).note) : undefined;
+      const day = next.days.find(d => d.name === dayName);
+      if (day) {
+        day.classes = day.classes.map(c => {
+          if (classMatches(c, match)) {
+            return { ...c, highlight, ...(note !== undefined ? { note } : {}) };
+          }
+          return c;
+        });
+      }
       break;
     }
     case 'replaceAll': {

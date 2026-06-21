@@ -7,12 +7,18 @@
 
 export type ClassLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
 
+export type ClassHighlight = "none" | "sold-out" | "trainer-choice" | "custom";
+
 export interface ScheduleClass {
   id: string;
   time: string;        // "7:30 AM"
   className: string;   // "MAT 57"
   instructor: string;  // "Reshma"
   level: ClassLevel;   // controls color band
+  highlight?: ClassHighlight;  // sold-out = orange+white+strikethrough, trainer-choice = lime
+  note?: string;              // small text like "(HARRY STYLES VS JT)"
+  bgColor?: string;           // custom background color (overrides highlight)
+  textColor?: string;         // custom text color (overrides default)
 }
 
 export interface ScheduleDay {
@@ -36,18 +42,23 @@ export interface ClassLevelRow {
 }
 
 export interface ScheduleTheme {
-  background: string;     // page background
+  background: string;     // page background (cream)
+  topBandBg: string;      // lime green top band background
   primaryText: string;    // titles, day headers
   bodyText: string;       // class entries
   mutedText: string;      // ticker text
-  accent: string;         // date range highlight color
+  accent: string;         // date range highlight color (lime)
   accentText: string;     // text on top of accent
   bandColors: Record<ClassLevel, string>; // color chip per level
+  soldOutBg: string;      // orange sold-out background
+  soldOutText: string;    // white sold-out text
+  trainerChoiceBg: string; // lime trainer's-choice background
   cardBg: string;         // background of day card
   cardBorder: string;     // border of day card
   fontFamilyHeading: string;
   fontFamilyBody: string;
   fontFamilyDisplay: string;
+  fontFamilyTicker: string;
 }
 
 export interface ScheduleDocument {
@@ -75,14 +86,19 @@ export interface ScheduleDocument {
 export type EditOp =
   | { type: "set"; path: string; value: unknown }
   | { type: "patch"; path: string; value: Record<string, unknown> }
-  | { type: "addClass"; dayId: string; cls: ScheduleClass }
-  | { type: "removeClass"; dayId: string; classId: string }
-  | { type: "updateClass"; dayId: string; classId: string; changes: Partial<ScheduleClass> }
-  | { type: "addDay"; day: ScheduleDay }
-  | { type: "removeDay"; dayId: string }
+  | { type: "addClass"; dayName: string; cls: ScheduleClass }
+  | { type: "removeClass"; dayName: string; match: Record<string, unknown> }
+  | { type: "updateClass"; dayName: string; match: Record<string, unknown>; changes: Partial<ScheduleClass> }
+  | { type: "updateAll"; match: Record<string, unknown>; changes: Partial<ScheduleClass> }
+  | { type: "addDay"; dayName: string }
+  | { type: "removeDay"; dayName: string }
   | { type: "replaceTicker"; bands: TickerBand[] }
   | { type: "patchTheme"; changes: Partial<ScheduleTheme> }
+  | { type: "setBandColor"; level: ClassLevel; color: string }
   | { type: "replaceClassLevels"; rows: ClassLevelRow[] }
+  | { type: "swapInstructor"; from: string; to: string }
+  | { type: "setFont"; family: "heading" | "body" | "display" | "ticker"; value: string }
+  | { type: "setClassHighlight"; dayName: string; match: Record<string, unknown>; highlight: ClassHighlight; note?: string }
   | { type: "replaceAll"; doc: ScheduleDocument };
 
 export interface ChatResponse {

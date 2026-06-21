@@ -3,7 +3,6 @@ import { writeFile, mkdir, readFile } from 'fs/promises';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import ZAI from 'z-ai-web-dev-sdk';
 
 const exec = promisify(execFile);
 
@@ -18,8 +17,6 @@ export const maxDuration = 60;
  *    to the on-screen preview.
  * 2. Write it to a temp file.
  * 3. Use Playwright (chromium, headless) to render it to PDF.
- *
- * If Playwright is not available we fall back to a simple HTML download.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -33,7 +30,6 @@ export async function POST(req: NextRequest) {
     const pdfPath = htmlPath.replace('.html', '.pdf');
     await writeFile(htmlPath, html, 'utf-8');
 
-    // Try Playwright via Node script
     try {
       await exec('node', ['-e', `
         const { chromium } = require('playwright');
@@ -55,7 +51,6 @@ export async function POST(req: NextRequest) {
       });
     } catch (err) {
       console.error('Playwright PDF failed, returning HTML', err);
-      // Fallback: return HTML
       return new NextResponse(html, {
         status: 200,
         headers: {
@@ -78,34 +73,50 @@ function esc(s: unknown): string {
 /** Render a ScheduleDocument to a self-contained HTML string for PDF export. */
 function renderScheduleHTML(doc: any): string {
   const t = doc.theme;
-  const tickerHtml = (doc.tickerBands || []).map((b: any, i: number) => {
+  const tickerHtml = (doc.tickerBands || []).map((b: any) => {
     const single = b.text + ' • ';
     const repeated = single.repeat(40).trim();
-    return `<div style="color:${b.textColor};background:${b.bgColor === 'transparent' ? 'transparent' : b.bgColor};font-size:${b.fontSize}px;font-style:${b.italic ? 'italic' : 'normal'};white-space:nowrap;overflow:hidden;padding:2px 0;">${esc(repeated)}</div>`;
+    return `<div style="background:${t.topBandBg};color:${b.textColor};font-size:${b.fontSize}px;font-family:${t.fontFamilyTicker};font-weight:500;white-space:nowrap;overflow:hidden;padding:2px 0;letter-spacing:0.02em;">${esc(repeated)}</div>`;
   }).join('');
 
   const classLevelRows = (doc.classLevels || []).map((r: any) => `
-    <div style="font-family:${t.fontFamilyBody};font-size:11px;color:${t.primaryText};">
+    <div style="font-family:${t.fontFamilyBody};font-size:11px;color:${t.primaryText};font-weight:500;letter-spacing:0.01em;">
       <span style="font-weight:700">${esc(r.level)}</span><span style="opacity:0.85"> : ${esc(r.classes.join(', '))}</span>
     </div>`).join('');
 
-  const dayCards = (doc.days || []).map((d: any) => {
+  const dayCount = (doc.days || []).length;
+  const gridCols = dayCount <= 4 ? `repeat(${dayCount}, 1fr)` : 'repeat(4, 1fr)';
+
+  const dayColumns = (doc.days || []).map((d: any) => {
     const rows = d.classes.length === 0
-      ? `<div style="font-size:10px;color:${t.mutedText};opacity:0.5;font-style:italic;padding:6px 0;">No classes</div>`
+      ? `<div style="font-size:9px;color:${t.mutedText};opacity:0.5;font-style:italic;padding:4px 0;">No classes</div>`
       : d.classes.map((c: any) => {
-          const band = t.bandColors[c.level] || t.accent;
-          return `<div style="display:flex;align-items:flex-start;gap:6px;padding:4px 4px;">
-            <div style="width:3px;align-self:stretch;background:${band};border-radius:2px;flex-shrink:0;min-height:28px;"></div>
-            <div style="flex:1;min-width:0;">
-              <div style="font-family:${t.fontFamilyBody};font-size:10px;font-weight:700;color:${t.primaryText};line-height:1.1;">${esc(c.time)}</div>
-              <div style="font-family:${t.fontFamilyBody};font-size:10px;color:${t.bodyText};line-height:1.25;margin-top:1px;word-break:break-word;">
-                <span style="font-weight:600">${esc(c.className)}</span>${c.instructor ? `<span style="opacity:0.8"> — ${esc(c.instructor)}</span>` : ''}
-              </div>
+          const highlight = c.highlight || 'none';
+          let bg = 'transparent';
+          let textColor = t.bodyText;
+          let isSoldOut = false;
+          if (highlight === 'sold-out') {
+            bg = t.soldOutBg;
+            textColor = t.soldOutText;
+            isSoldOut = true;
+          } else if (highlight === 'trainer-choice') {
+            bg = t.trainerChoiceBg;
+            textColor = t.primaryText;
+          } else if (highlight === 'custom' && c.bgColor) {
+            bg = c.bgColor;
+            textColor = c.textColor || t.bodyText;
+          }
+          const strikeClass = isSoldOut ? 'text-decoration:line-through;text-decoration-color:#dc2626;text-decoration-thickness:2px;' : '';
+          return `<div style="display:flex;align-items:flex-start;gap:8px;padding:3px 6px;margin:0 -6px 1px;background:${bg};border-radius:${highlight !== 'none' ? '3px' : '0'};position:relative;">
+            <div style="font-family:${t.fontFamilyBody};font-size:9.5px;font-weight:600;color:${textColor};text-align:right;width:62px;flex-shrink:0;font-variant-numeric:tabular-nums;letter-spacing:-0.1px;">${esc(c.time)}</div>
+            <div style="flex:1;min-width:0;font-family:${t.fontFamilyBody};font-size:9.5px;color:${textColor};font-weight:500;line-height:1.3;">
+              <span style="font-weight:600;${strikeClass}">${esc(c.className)}</span>${c.instructor ? `<span style="${strikeClass}"> - ${esc(c.instructor)}</span>` : ''}
+              ${c.note ? `<div style="font-size:6.5px;font-weight:400;opacity:0.9;margin-top:1px;letter-spacing:0.08em;text-transform:uppercase;">${esc(c.note)}</div>` : ''}
             </div>
           </div>`;
         }).join('');
-    return `<div style="background:${t.cardBg};border:1px solid ${t.cardBorder};border-radius:8px;padding:12px 10px;display:flex;flex-direction:column;gap:6px;">
-      <div style="font-family:${t.fontFamilyHeading};font-size:13px;font-weight:800;color:${t.primaryText};letter-spacing:0.05em;text-transform:uppercase;padding-bottom:6px;border-bottom:1.5px solid ${t.primaryText};margin-bottom:2px;">${esc(d.name)}</div>
+    return `<div style="padding:12px 14px 16px;border-right:1px solid ${t.cardBorder};min-height:120px;">
+      <div style="font-family:${t.fontFamilyHeading};font-size:15px;font-weight:800;color:${t.primaryText};letter-spacing:0.04em;text-transform:uppercase;padding-bottom:8px;margin-bottom:8px;border-bottom:1.5px solid ${t.primaryText};">${esc(d.name)}</div>
       ${rows}
     </div>`;
   }).join('');
@@ -122,16 +133,19 @@ function renderScheduleHTML(doc: any): string {
 </style>
 </head>
 <body>
-  <div style="background:${t.background};color:${t.primaryText};font-family:${t.fontFamilyBody};width:100%;max-width:1100px;margin:0 auto;padding:24px 28px 32px;box-sizing:border-box;">
-    ${tickerHtml ? `<div style="margin-bottom:8px;">${tickerHtml}</div>` : ''}
-    <div style="text-align:center;margin:20px 0 16px;">
-      <h1 style="font-family:${t.fontFamilyHeading};font-size:40px;line-height:1.0;margin:0;color:${t.primaryText};font-weight:800;text-transform:uppercase;">${esc(doc.studioName)}</h1>
-      ${doc.location ? `<div style="font-family:${t.fontFamilyHeading};font-size:24px;margin-top:6px;color:${t.primaryText};font-weight:700;letter-spacing:0.02em;text-transform:uppercase;">${esc(doc.location)}</div>` : ''}
-      ${doc.dateRange ? `<div style="font-family:${t.fontFamilyDisplay};font-style:italic;font-size:28px;margin-top:10px;color:${t.accent};font-weight:700;">${esc(doc.dateRange)}</div>` : ''}
-      ${doc.tagline ? `<div style="font-family:${t.fontFamilyBody};font-size:10px;color:${t.mutedText};margin-top:6px;letter-spacing:0.12em;text-transform:uppercase;">${esc(doc.tagline)}</div>` : ''}
+  <div style="background:${t.background};color:${t.primaryText};font-family:${t.fontFamilyBody};margin:0 auto;box-sizing:border-box;position:relative;overflow:hidden;">
+    ${tickerHtml ? `<div style="background:${t.topBandBg};">${tickerHtml}</div>` : ''}
+    <div style="position:relative;text-align:center;padding:32px 24px 16px;">
+      ${doc.location ? `<div style="position:absolute;top:20px;right:28px;width:110px;height:110px;border-radius:50%;background:${t.topBandBg};display:flex;align-items:center;justify-content:center;flex-direction:column;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+        <span style="font-family:${t.fontFamilyHeading};font-size:18px;font-weight:800;color:${t.primaryText};letter-spacing:0.04em;text-transform:uppercase;line-height:1.0;">${esc(doc.location)}</span>
+        <span style="font-family:${t.fontFamilyBody};font-size:8px;color:${t.primaryText};opacity:0.7;margin-top:4px;letter-spacing:0.15em;text-transform:uppercase;">Studio</span>
+      </div>` : ''}
+      <h1 style="font-family:${t.fontFamilyHeading};font-size:48px;line-height:0.95;margin:0;color:${t.primaryText};letter-spacing:-0.015em;font-weight:900;text-transform:uppercase;">${esc(doc.studioName)}</h1>
+      ${doc.dateRange ? `<div style="font-family:${t.fontFamilyDisplay};font-style:italic;font-size:28px;margin-top:14px;color:${t.accent};font-weight:700;">${esc(doc.dateRange)}</div>` : ''}
+      ${doc.tagline ? `<div style="font-family:${t.fontFamilyBody};font-size:9px;color:${t.mutedText};margin-top:6px;letter-spacing:0.18em;text-transform:uppercase;">${esc(doc.tagline)}</div>` : ''}
     </div>
-    ${classLevelRows ? `<div style="text-align:center;margin-bottom:18px;display:flex;flex-direction:column;gap:4px;">${classLevelRows}</div>` : ''}
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;">${dayCards}</div>
+    ${classLevelRows ? `<div style="text-align:center;padding:0 24px 18px;display:flex;flex-direction:column;gap:4px;">${classLevelRows}</div>` : ''}
+    <div style="display:grid;grid-template-columns:${gridCols};gap:0;padding:0 24px 32px;">${dayColumns}</div>
   </div>
 </body>
 </html>`;

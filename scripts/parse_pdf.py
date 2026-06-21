@@ -36,6 +36,10 @@ def _hex_color(c: int) -> str:
 TIME_RE = re.compile(r"^\s*(\d{1,2}:\d{2}\s*[AP]M)\s*$", re.IGNORECASE)
 DAY_NAMES = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
 
+# Special class note patterns — small italic text under a class line.
+# The note appears at the END of the class text like "(HARRY STYLES VS JT)".
+NOTE_RE = re.compile(r"\s*\(([^)]+)\)\s*$")
+
 
 def _looks_like_real_class_level_row(text: str) -> bool:
     """Filter out the marquee/ticker text that repeats the class-level prefix."""
@@ -136,6 +140,29 @@ def parse_pdf(path: str) -> dict[str, Any]:
             if re.search(r"\d{1,2}(st|nd|rd|th)", s["text"], re.I):
                 date_range = s["text"]
                 break
+
+    # ---------- 3b. Tagline ----------
+    # Small uppercase text near the date, typically with "SPECIAL" or "EDITION" in it,
+    # or any small Montserrat text right under the date.
+    tagline = ""
+    for s in spans:
+        if s["size"] <= 6 and 4 <= s["size"] and re.search(r"[A-Z]{2,}", s["text"]) and len(s["text"]) < 80:
+            # Look for "SPECIAL" or similar event-style words
+            if re.search(r"\b(SPECIAL|EDITION|EXCLUSIVE|THEME|WEEK|NIGHT)\b", s["text"], re.I):
+                tagline = s["text"]
+                break
+    if not tagline:
+        # Fallback: any tiny text under the date area (y between 195 and 230)
+        date_y = None
+        for s in spans:
+            if s["text"] == date_range:
+                date_y = s["y"]
+                break
+        if date_y is not None:
+            for s in spans:
+                if date_y < s["y"] < date_y + 30 and s["size"] <= 7 and len(s["text"]) > 5 and s["text"].isupper():
+                    tagline = s["text"]
+                    break
 
     # ---------- 4. Class-level rows (de-duplicated) ----------
     class_levels: list[dict] = []
@@ -256,7 +283,7 @@ def parse_pdf(path: str) -> dict[str, Any]:
         for s in ordered:
             if TIME_RE.match(s["text"]):
                 if current_time and current_class_parts:
-                    rows.append({"time": current_time, "class": " ".join(current_class_parts)})
+                    rows.append({"time": current_time, "class": " ".join(current_class_parts), "y": current_y or 0})
                 current_time = s["text"].strip()
                 current_class_parts = []
                 current_y = s["y"]
@@ -264,11 +291,18 @@ def parse_pdf(path: str) -> dict[str, Any]:
                 if current_time is not None and (current_y is None or abs(s["y"] - current_y) < 6):
                     current_class_parts.append(s["text"])
         if current_time and current_class_parts:
-            rows.append({"time": current_time, "class": " ".join(current_class_parts)})
+            rows.append({"time": current_time, "class": " ".join(current_class_parts), "y": current_y or 0})
 
         classes: list[dict] = []
         for r in rows:
             cls_text = _norm(r["class"])
+            # Extract note like "(HARRY STYLES VS JT)" if present
+            note = ""
+            note_match = NOTE_RE.search(cls_text)
+            if note_match:
+                note = note_match.group(1).strip()
+                cls_text = _norm(NOTE_RE.sub("", cls_text))
+
             m = re.match(r"^(.+?)\s*[-–—]\s*([A-Za-z][A-Za-z\s.'-]*)$", cls_text)
             if m:
                 cls_name = _norm(m.group(1))
@@ -276,6 +310,15 @@ def parse_pdf(path: str) -> dict[str, Any]:
             else:
                 cls_name = cls_text
                 instr = ""
+
+            # Detect highlight: white text on colored bg → sold-out
+            highlight = "none"
+            cls_y = r.get("y", 0)
+            for s in col_spans:
+                if abs(s["y"] - cls_y) < 6 and s["text"].strip() and s["color"].lower() in ("#ffffff", "#fff"):
+                    highlight = "sold-out"
+                    break
+
             lvl = "BEGINNER"
             cu = cls_name.upper()
             if any(k in cu for k in ["CARDIO BARRE PLUS", "HIIT", "AMPED", "STRENGTH LAB", "BACK BODY BLAZE", "FIT"]):
@@ -288,6 +331,8 @@ def parse_pdf(path: str) -> dict[str, Any]:
                 "className": cls_name,
                 "instructor": instr,
                 "level": lvl,
+                "highlight": highlight,
+                "note": note,
             })
 
         days.append({
@@ -297,19 +342,79 @@ def parse_pdf(path: str) -> dict[str, Any]:
         })
 
     # ---------- 7. Theme ----------
+    # Sample multiple pixels to detect:
+    #   - topBandBg (lime band at the very top of the page)
+    #   - main background (cream)
+    #   - accent (italic date color, from spans)
+    #   - soldOutBg / trainerChoiceBg (orange/lime colored row backgrounds)
     bg = "#ffffff"
+    top_band_bg = "#cdd750"
+    sold_out_bg = "#e87a3c"
+    trainer_choice_bg = "#cdd750"
+
     try:
         d2 = fitz.open(path)
         p = d2[0]
-        pix = p.get_pixmap(matrix=fitz.Matrix(0.2, 0.2))
-        sample = pix.pixel(2, 2)
-        if isinstance(sample, (list, tuple)) and len(sample) >= 3:
-            bg = f"#{sample[0]:02x}{sample[1]:02x}{sample[2]:02x}"
+        # High-resolution pixmap for accurate color sampling
+        pix = p.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+        pw, ph = pix.width, pix.height
+
+        def _hex_at(x: int, y: int) -> str:
+            try:
+                c = pix.pixel(x, y)
+                if isinstance(c, (list, tuple)) and len(c) >= 3:
+                    return f"#{c[0]:02x}{c[1]:02x}{c[2]:02x}"
+            except Exception:
+                pass
+            return "#ffffff"
+
+        # Top band color = sample just below the very top edge, in the middle.
+        # The ticker spans sit at y ~ 3-12 in PDF coords.
+        top_band_bg = _hex_at(pw // 2, int(5 * 1.5))
+
+        # Main background = sample the area just below the title text, to the
+        # left of the date (PDF y ~ 220, x ~ 300 in original coords → mid-page).
+        # The very edges of the page are the lime band; the inner area is cream.
+        bg = _hex_at(int(150 * 1.5), int(220 * 1.5))
+        # If that sample is still lime-y, try the middle of the day columns area
+        if bg.lower().startswith("#d0") or bg.lower().startswith("#c5"):
+            bg = _hex_at(int(300 * 1.5), int(700 * 1.5))
+
+        # Scan the day-column area (y from 360 to 800) for colored row blocks.
+        # We're looking for the orange "sold out" color (~#e87a3c) and any
+        # lime (~#cdd750) blocks.
+        orange_candidates: dict[str, int] = {}
+        lime_candidates: dict[str, int] = {}
+        for pdf_y in range(360, 820, 4):
+            pix_y = int(pdf_y * 1.5)
+            if pix_y >= ph - 2:
+                continue
+            for pix_x in range(0, pw, 8):
+                c = pix.pixel(pix_x, pix_y)
+                if not (isinstance(c, (list, tuple)) and len(c) >= 3):
+                    continue
+                r, g, b = c[0], c[1], c[2]
+                # Orange-ish (sold out): R > 200, G in 90-180, B < 100
+                if r > 200 and 90 <= g <= 200 and b < 110 and r > g > b:
+                    key = f"#{r:02x}{g:02x}{b:02x}"
+                    orange_candidates[key] = orange_candidates.get(key, 0) + 1
+                # Lime-ish (trainer's choice): R in 180-230, G > 210, B < 130
+                elif 180 <= r <= 240 and g > 210 and b < 140 and g > r > b:
+                    key = f"#{r:02x}{g:02x}{b:02x}"
+                    lime_candidates[key] = lime_candidates.get(key, 0) + 1
+        if orange_candidates:
+            sold_out_bg = max(orange_candidates.items(), key=lambda kv: kv[1])[0]
+        if lime_candidates:
+            # Don't override if it's the same as top band
+            best = max(lime_candidates.items(), key=lambda kv: kv[1])[0]
+            if best.lower() != top_band_bg.lower():
+                trainer_choice_bg = best
+
         d2.close()
     except Exception:
         pass
 
-    accent = "#cdd750"
+    accent = top_band_bg  # the date text color matches the top band
     for s in spans:
         if "IvyPresto" in s["font"] or "Italic" in s["font"]:
             accent = s["color"]
@@ -317,21 +422,26 @@ def parse_pdf(path: str) -> dict[str, Any]:
 
     theme = {
         "background": bg,
+        "topBandBg": top_band_bg,
         "primaryText": "#121213",
         "bodyText": "#231f20",
         "mutedText": "#181818",
         "accent": accent,
         "accentText": "#121213",
         "bandColors": {
-            "BEGINNER": "#cdd750",
+            "BEGINNER": top_band_bg,
             "INTERMEDIATE": "#efefdf",
             "ADVANCED": "#f3c969",
         },
+        "soldOutBg": sold_out_bg,
+        "soldOutText": "#ffffff",
+        "trainerChoiceBg": trainer_choice_bg,
         "cardBg": bg,
         "cardBorder": "#00000022",
         "fontFamilyHeading": "Agrandir, Inter, system-ui, sans-serif",
         "fontFamilyBody": "Montserrat, Inter, system-ui, sans-serif",
         "fontFamilyDisplay": "IvyPresto Display, Playfair Display, Georgia, serif",
+        "fontFamilyTicker": "Sweet Sans Pro, Inter, system-ui, sans-serif",
     }
 
     # ---------- Sort days by canonical week order ----------
@@ -342,7 +452,7 @@ def parse_pdf(path: str) -> dict[str, Any]:
         "studioName": studio_name,
         "location": location or "STUDIO",
         "dateRange": date_range or "",
-        "tagline": "",
+        "tagline": tagline,
         "tickerBands": ticker[:3] if ticker else [],
         "classLevels": class_levels,
         "days": days,

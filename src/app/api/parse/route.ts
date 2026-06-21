@@ -20,7 +20,21 @@ interface ParsedSchedule {
   tagline?: string;
   tickerBands: Array<{ text: string; textColor: string; bgColor: string; fontSize: number; italic?: boolean }>;
   classLevels: Array<{ level: string; classes: string[] }>;
-  days: Array<{ id: string; name: string; classes: Array<{ id: string; time: string; className: string; instructor: string; level: string }> }>;
+  days: Array<{
+    id: string;
+    name: string;
+    classes: Array<{
+      id: string;
+      time: string;
+      className: string;
+      instructor: string;
+      level: string;
+      highlight?: string;
+      note?: string;
+      bgColor?: string;
+      textColor?: string;
+    }>;
+  }>;
   theme: Record<string, unknown>;
   meta: Record<string, unknown>;
 }
@@ -154,11 +168,16 @@ function normalizeSchedule(parsed: ParsedSchedule, sourceFileName: string, sourc
       className: c.className,
       instructor: c.instructor,
       level: (['BEGINNER', 'INTERMEDIATE', 'ADVANCED'].includes(c.level) ? c.level : 'BEGINNER') as 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED',
+      highlight: (['none', 'sold-out', 'trainer-choice', 'custom'].includes(c.highlight as string) ? c.highlight : 'none') as 'none' | 'sold-out' | 'trainer-choice' | 'custom',
+      note: typeof c.note === 'string' ? c.note : '',
+      bgColor: typeof c.bgColor === 'string' ? c.bgColor : undefined,
+      textColor: typeof c.textColor === 'string' ? c.textColor : undefined,
     })),
   }));
 
   const theme = {
-    background: '#ffffff',
+    background: '#efeede',
+    topBandBg: '#cdd750',
     primaryText: '#121213',
     bodyText: '#231f20',
     mutedText: '#181818',
@@ -169,11 +188,15 @@ function normalizeSchedule(parsed: ParsedSchedule, sourceFileName: string, sourc
       INTERMEDIATE: '#efefdf',
       ADVANCED: '#f3c969',
     } as Record<string, string>,
-    cardBg: '#ffffff',
+    soldOutBg: '#ed603d',
+    soldOutText: '#ffffff',
+    trainerChoiceBg: '#cdd750',
+    cardBg: '#efeede',
     cardBorder: '#00000022',
-    fontFamilyHeading: 'Inter, system-ui, sans-serif',
-    fontFamilyBody: 'Inter, system-ui, sans-serif',
-    fontFamilyDisplay: 'Playfair Display, Georgia, serif',
+    fontFamilyHeading: 'Agrandir, Inter, system-ui, sans-serif',
+    fontFamilyBody: 'Montserrat, Inter, system-ui, sans-serif',
+    fontFamilyDisplay: 'IvyPresto Display, Playfair Display, Georgia, serif',
+    fontFamilyTicker: 'Sweet Sans Pro, Inter, system-ui, sans-serif',
     ...(parsed.theme || {}),
   };
 
