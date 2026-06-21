@@ -46,6 +46,8 @@ interface InlineStore {
   redo: () => void;
   setSpanText: (spanId: string, text: string, pageIdx: number) => void;
   setSpanTextDirect: (spanId: string, text: string) => void;
+  setSpanStyle: (spanId: string, changes: Partial<TextSpan>) => void;
+  deleteSpan: (spanId: string) => void;
   startEditing: (spanId: string) => void;
   stopEditing: () => void;
   pushMessage: (m: Omit<ChatMessage, 'id' | 'ts'>) => void;
@@ -120,6 +122,28 @@ function applyOpToSpan(span: TextSpan, op: InlineEditOp) {
       if (op.page !== undefined && span.page !== op.page) break;
       if (text.includes(find)) {
         span.text = op.text;
+      }
+      break;
+    }
+    case 'hideSpan': {
+      if (span.id === op.spanId) {
+        span.hidden = true;
+      }
+      break;
+    }
+    case 'hideSpansByContent': {
+      const cs = op.caseSensitive ?? false;
+      const find = cs ? op.find : op.find.toLowerCase();
+      const text = cs ? span.text : span.text.toLowerCase();
+      if (op.page !== undefined && span.page !== op.page) break;
+      if (text.includes(find)) {
+        span.hidden = true;
+      }
+      break;
+    }
+    case 'setSpanStyle': {
+      if (span.id === op.spanId) {
+        Object.assign(span, op.changes);
       }
       break;
     }
@@ -260,6 +284,59 @@ export const useInlineStore = create<InlineStore>((set, get) => ({
     }
     next.updatedAt = new Date().toISOString();
     set({ document: next });
+  },
+
+  setSpanStyle: (spanId, changes) => {
+    const state = get();
+    if (!state.document) return;
+    const before = clone(state.document);
+    const next = clone(state.document);
+    let span: TextSpan | undefined;
+    for (const page of next.pages) {
+      span = page.spans.find(s => s.id === spanId);
+      if (span) break;
+    }
+    if (!span) return;
+    Object.assign(span, changes);
+    next.updatedAt = new Date().toISOString();
+    set({
+      document: next,
+      history: [{
+        id: uid('h-'),
+        before,
+        after: next,
+        summary: `Styled: "${span.originalText.slice(0, 25)}"`,
+        ts: Date.now(),
+      }, ...state.history].slice(0, 50),
+      redoStack: [],
+    });
+  },
+
+  deleteSpan: (spanId) => {
+    const state = get();
+    if (!state.document) return;
+    const before = clone(state.document);
+    const next = clone(state.document);
+    let span: TextSpan | undefined;
+    for (const page of next.pages) {
+      span = page.spans.find(s => s.id === spanId);
+      if (span) break;
+    }
+    if (!span) return;
+    span.hidden = true;
+    next.updatedAt = new Date().toISOString();
+    set({
+      document: next,
+      editingSpanId: null,
+      history: [{
+        id: uid('h-'),
+        before,
+        after: next,
+        summary: `Deleted: "${span.originalText.slice(0, 30)}"`,
+        ts: Date.now(),
+      }, ...state.history].slice(0, 50),
+      redoStack: [],
+    });
   },
 
   startEditing: (spanId) => set({ editingSpanId: spanId }),

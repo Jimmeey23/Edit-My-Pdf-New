@@ -1,18 +1,6 @@
 // =====================================================
 // Inline-editable schedule document model
 // =====================================================
-// The document is stored as a list of pages. Each page has:
-//   - backgroundImage: a PNG data URL of the original PDF page with ALL TEXT
-//     REDACTED (only colored blocks, borders, circles remain)
-//   - spans: a list of text spans with their exact position, font, size, color
-//     — each span is overlaid on the background as an editable text element
-//
-// Editing a span only changes its `text` field. The position, font, size, and
-// color never change. The background image never changes. This guarantees the
-// document ALWAYS looks identical to the original — only the text content
-// changes.
-//
-// This is true inline editing on top of the actual uploaded PDF.
 
 export interface TextSpan {
   id: string;
@@ -24,20 +12,27 @@ export interface TextSpan {
   y2: number;
   w: number;
   h: number;
-  font: string;    // original PDF font name (for reference)
+  font: string;    // original PDF font name
   size: number;    // font size in pt
   color: string;   // hex color
   page: number;
+  rotation: number; // 0, -90, or 90 degrees
+  // User-editable style overrides (undefined = use original)
+  bold?: boolean;
+  italic?: boolean;
+  align?: 'left' | 'center' | 'right';
+  letterSpacing?: number;
+  hidden?: boolean; // if true, span is deleted/hidden from view
 }
 
 export interface SchedulePage {
   index: number;
-  backgroundImage: string;   // PNG data URL
-  width: number;             // px (rendered)
-  height: number;            // px (rendered)
-  pdfWidth: number;          // pt (original PDF)
-  pdfHeight: number;         // pt
-  scale: number;             // background render scale (e.g. 2.5)
+  backgroundImage: string;
+  width: number;
+  height: number;
+  pdfWidth: number;
+  pdfHeight: number;
+  scale: number;
   spans: TextSpan[];
 }
 
@@ -50,16 +45,15 @@ export interface InlineScheduleDocument {
   updatedAt: string;
 }
 
-// =====================================================
-// Edit operations for chat-driven inline editing
-// =====================================================
-
 export type InlineEditOp =
   | { type: 'replaceText'; find: string; replace: string; caseSensitive?: boolean }
   | { type: 'setSpanText'; spanId: string; text: string }
   | { type: 'setSpanColor'; spanId: string; color: string }
   | { type: 'setSpansColor'; find: string; color: string; caseSensitive?: boolean }
-  | { type: 'setSpanTextByContent'; find: string; text: string; caseSensitive?: boolean; page?: number };
+  | { type: 'setSpanTextByContent'; find: string; text: string; caseSensitive?: boolean; page?: number }
+  | { type: 'hideSpan'; spanId: string }
+  | { type: 'hideSpansByContent'; find: string; caseSensitive?: boolean; page?: number }
+  | { type: 'setSpanStyle'; spanId: string; changes: Partial<Pick<TextSpan, 'size' | 'color' | 'bold' | 'italic' | 'align' | 'letterSpacing'>> };
 
 export interface ChatResponse {
   reply: string;

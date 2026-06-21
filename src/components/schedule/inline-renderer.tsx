@@ -4,47 +4,27 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useInlineStore } from '@/lib/inline-store';
 import { mapPdfFont } from '@/lib/font-map';
 import type { TextSpan, SchedulePage } from '@/lib/inline-types';
+import { SpanToolbar } from './span-toolbar';
 import { cn } from '@/lib/utils';
 
 interface Props {
   page: SchedulePage;
-  /** Display scale — the background image is rendered at `page.scale` (e.g. 2.5x).
-   * We display it at a CSS size of `page.pdfWidth * displayScale` pt, and position
-   * each span at `span.x * displayScale` etc. */
   displayScale: number;
 }
 
-/**
- * InlinePageRenderer renders a single page as:
- *   1. A background <img> (the original PDF page with text redacted)
- *   2. Absolutely-positioned <span contentEditable> overlays for each text span,
- *      placed at the span's exact (x, y) position with the same font/size/color.
- *
- * Clicking a span makes it editable. Typing updates the span's text in the store.
- * The background never changes — only the text content changes. This guarantees
- * the document ALWAYS looks identical to the original.
- */
 export function InlinePageRenderer({ page, displayScale }: Props) {
   const { document, editingSpanId, startEditing, stopEditing, setSpanTextDirect, setSpanText } = useInlineStore();
-  const containerRef = useRef<HTMLDivElement>(null);
 
   if (!document) return null;
 
-  // CSS display dimensions
   const cssWidth = page.pdfWidth * displayScale;
   const cssHeight = page.pdfHeight * displayScale;
 
   return (
     <div
-      ref={containerRef}
       className="relative inline-block shadow-lg"
-      style={{
-        width: `${cssWidth}px`,
-        height: `${cssHeight}px`,
-        background: '#ffffff',
-      }}
+      style={{ width: `${cssWidth}px`, height: `${cssHeight}px`, background: '#ffffff' }}
     >
-      {/* Background image (text-redacted original PDF page) */}
       <img
         src={page.backgroundImage}
         alt={`Page ${page.index + 1}`}
@@ -52,39 +32,60 @@ export function InlinePageRenderer({ page, displayScale }: Props) {
         style={{ pointerEvents: 'none' }}
         draggable={false}
       />
-
-      {/* Editable text span overlays */}
-      {page.spans.map(span => (
+      {page.spans.filter(s => !s.hidden).map(span => (
         <EditableSpan
           key={span.id}
           span={span}
           displayScale={displayScale}
           isEditing={editingSpanId === span.id}
+          isSelected={editingSpanId === span.id}
           onStartEdit={() => startEditing(span.id)}
           onStopEdit={(newText) => {
-            if (newText !== span.text) {
-              setSpanText(span.id, newText, page.index);
-            }
+            if (newText !== span.text) setSpanText(span.id, newText, page.index);
             stopEditing();
           }}
           onTextChange={(newText) => setSpanTextDirect(span.id, newText)}
         />
       ))}
+      {/* Floating toolbar for the currently-selected span */}
+      {editingSpanId && (
+        <SpanToolbarWrapper page={page} displayScale={displayScale} />
+      )}
+    </div>
+  );
+}
+
+/** Wrapper that positions the toolbar near the selected span. */
+function SpanToolbarWrapper({ page, displayScale }: { page: SchedulePage; displayScale: number }) {
+  const { document, editingSpanId } = useInlineStore();
+  if (!document || !editingSpanId) return null;
+  const span = page.spans.find(s => s.id === editingSpanId);
+  if (!span) return null;
+  const left = span.x * displayScale;
+  const top = span.y * displayScale;
+  // Position toolbar above the span (or below if near top)
+  const toolbarTop = top > 50 ? top - 44 : top + (span.h * displayScale) + 6;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: `${left}px`,
+        top: `${toolbarTop}px`,
+        zIndex: 100,
+      }}
+    >
+      <SpanToolbar />
     </div>
   );
 }
 
 function EditableSpan({
-  span,
-  displayScale,
-  isEditing,
-  onStartEdit,
-  onStopEdit,
-  onTextChange,
+  span, displayScale, isEditing, isSelected, onStartEdit, onStopEdit, onTextChange,
 }: {
   span: TextSpan;
   displayScale: number;
   isEditing: boolean;
+  isSelected: boolean;
   onStartEdit: () => void;
   onStopEdit: (text: string) => void;
   onTextChange: (text: string) => void;
@@ -92,18 +93,47 @@ function EditableSpan({
   const ref = useRef<HTMLDivElement>(null);
   const fontMap = mapPdfFont(span.font, span.size);
 
-  // Position and size in CSS pixels
-  const left = span.x * displayScale;
-  const top = span.y * displayScale;
-  const width = (span.x2 - span.x) * displayScale;
-  const height = (span.y2 - span.y) * displayScale;
-  const fontSize = span.size * displayScale;
+  // Apply user style overrides
+  const fontSize = (span.size ?? fontMap.fontSize) * displayScale;
+  const fontWeight = span.bold !== undefined
+    ? (span.bold ? 800 : 400)
+    : fontMap.fontWeight;
+  const fontStyle = span.italic !== undefined
+    ? (span.italic ? 'italic' : 'normal')
+    : fontMap.fontStyle;
+  const color = span.color;
+  const letterSpacing = span.letterSpacing !== undefined ? `${span.letterSpacing}px` : '0.01em';
 
-  // Focus when entering edit mode
+  // Base position
+  let left = span.x * displayScale;
+  let top = span.y * displayScale;
+  let width = (span.x2 - span.x) * displayScale;
+  let height = (span.y2 - span.y) * displayScale;
+  let transform: string | undefined;
+
+  // For rotated spans (side borders), we need to rotate the element.
+  // The PDF bbox for rotated text is the bounding box of the rotated text.
+  // dir=(0,-1) means text reads bottom-to-top (rotated -90°)
+  // dir=(0,1) means text reads top-to-bottom (rotated +90°)
+  if (span.rotation === -90) {
+    // Text reads upward (bottom to top). The bbox width is the text height,
+    // bbox height is the text length. We rotate -90° around the top-left corner.
+    transform = 'rotate(-90deg)';
+    transform += ' translate(-100%, 0)';
+    // After rotation, swap width/height
+    [width, height] = [height, width];
+  } else if (span.rotation === 90) {
+    transform = 'rotate(90deg)';
+    transform += ' translate(0, -100%)';
+    [width, height] = [height, width];
+  }
+
+  // Alignment
+  const textAlign = span.align ?? 'left';
+
   useEffect(() => {
     if (isEditing && ref.current) {
       ref.current.focus();
-      // Select all text
       const range = document.createRange();
       range.selectNodeContents(ref.current);
       const sel = window.getSelection();
@@ -112,8 +142,6 @@ function EditableSpan({
     }
   }, [isEditing]);
 
-  // Determine if this span is a long ticker/marquee text (very wide) — if so,
-  // clip it to the page width and don't let editing expand it.
   const isTicker = width > 400 && (span.font.toLowerCase().includes('sweet') || span.text.includes('•'));
 
   const handleBlur = useCallback(() => {
@@ -128,7 +156,6 @@ function EditableSpan({
     }
     if (e.key === 'Escape') {
       e.preventDefault();
-      // Restore original
       if (ref.current) ref.current.innerText = span.text;
       (e.target as HTMLElement).blur();
     }
@@ -142,17 +169,8 @@ function EditableSpan({
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
       onClick={(e) => {
-        if (!isEditing) {
-          e.stopPropagation();
-          onStartEdit();
-        }
-      }}
-      onMouseDown={(e) => {
-        // Prevent text selection when not in edit mode (so clicking doesn't
-        // interfere with scrolling)
-        if (!isEditing) {
-          // Allow the click to start editing
-        }
+        e.stopPropagation();
+        if (!isEditing) onStartEdit();
       }}
       style={{
         position: 'absolute',
@@ -162,16 +180,18 @@ function EditableSpan({
         height: `${Math.max(height, fontSize * 1.1)}px`,
         fontFamily: fontMap.fontFamily,
         fontSize: `${fontSize}px`,
-        fontWeight: fontMap.fontWeight,
-        fontStyle: fontMap.fontStyle,
-        color: span.color,
+        fontWeight,
+        fontStyle,
+        color,
         lineHeight: 1.0,
-        letterSpacing: '0.01em',
+        letterSpacing,
         whiteSpace: isTicker ? 'nowrap' : 'pre',
         overflow: 'hidden',
-        textOverflow: isTicker ? 'clip' : 'clip',
+        textAlign,
+        transform,
+        transformOrigin: 'top left',
         cursor: isEditing ? 'text' : 'pointer',
-        outline: isEditing ? '1.5px solid #3b82f6' : 'none',
+        outline: isSelected ? '1.5px solid #3b82f6' : 'none',
         outlineOffset: '1px',
         background: isEditing ? 'rgba(59, 130, 246, 0.06)' : 'transparent',
         borderRadius: '2px',
@@ -180,9 +200,9 @@ function EditableSpan({
         boxSizing: 'border-box',
         userSelect: isEditing ? 'text' : 'none',
         zIndex: isEditing ? 10 : 2,
-        transition: 'background 0.1s, outline 0.1s',
+        transition: 'outline 0.1s',
       }}
-      title={isEditing ? 'Press Enter to save, Esc to cancel' : 'Click to edit'}
+      title={isEditing ? 'Enter to save · Esc to cancel' : 'Click to edit'}
     >
       {span.text}
     </div>

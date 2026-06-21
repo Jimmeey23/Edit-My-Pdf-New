@@ -1,43 +1,41 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
+import { Inter, Montserrat, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const montserrat = Montserrat({
+  variable: "--font-montserrat",
   subsets: ["latin"],
+  weight: ["200", "300", "400", "500", "600", "700", "800"],
 });
 
 const playfair = Playfair_Display({
   variable: "--font-playfair-display",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800", "900"],
   style: ["italic", "normal"],
 });
 
+// Agrandir is a commercial font — we use Inter 900 as the closest web equivalent.
+// The CSS variable --font-agrandir maps to Inter with a heavy weight fallback.
+const agrandir = Inter({
+  variable: "--font-agrandir",
+  subsets: ["latin"],
+  weight: ["900"],
+});
+
 export const metadata: Metadata = {
-  title: "Schedule Studio — Chat to edit your weekly schedule",
-  description: "Upload a PDF / image / DOCX of your weekly schedule. Edit values, colors, theme bands, alignment through natural-language chat. The original styling stays untouched.",
-  keywords: ["schedule", "editor", "chat", "PDF", "studio", "weekly"],
+  title: "Schedule Studio — Inline schedule editor",
+  description: "Upload a PDF schedule and edit the text inline — click any text to edit it, or chat to change it. The layout never changes.",
+  keywords: ["schedule", "editor", "inline", "PDF", "studio"],
   authors: [{ name: "Z.ai Team" }],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
-  },
-  openGraph: {
-    title: "Schedule Studio",
-    description: "Upload · Preview · Chat to edit your weekly schedule",
-    url: "https://chat.z.ai",
-    siteName: "Z.ai",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Schedule Studio",
-    description: "Upload · Preview · Chat to edit your weekly schedule",
   },
 };
 
@@ -49,7 +47,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} antialiased bg-background text-foreground`}
+        className={`${inter.variable} ${montserrat.variable} ${playfair.variable} ${agrandir.variable} antialiased bg-background text-foreground`}
       >
         {children}
         <Toaster />

@@ -48,6 +48,9 @@ def parse_pdf_inline(path: str) -> dict[str, Any]:
             if "lines" not in b:
                 continue
             for line in b["lines"]:
+                # Capture line direction for rotated text (side borders)
+                line_dir = line.get("dir", (1.0, 0.0))
+                line_wmode = line.get("wmode", 0)
                 for sp in line["spans"]:
                     text = sp.get("text", "").strip()
                     if not text:
@@ -56,6 +59,12 @@ def parse_pdf_inline(path: str) -> dict[str, Any]:
                     color = sp.get("color", 0)
                     font = sp.get("font", "")
                     size = sp.get("size", 0)
+                    # Determine rotation: dir=(1,0) = horizontal, (0,-1) = rotated -90°, (0,1) = rotated +90°
+                    rotation = 0
+                    if line_dir == (0.0, -1.0):
+                        rotation = -90
+                    elif line_dir == (0.0, 1.0):
+                        rotation = 90
                     spans.append({
                         "id": f"p{page_idx}-s{span_counter}",
                         "text": text,
@@ -70,6 +79,7 @@ def parse_pdf_inline(path: str) -> dict[str, Any]:
                         "size": round(size, 2),
                         "color": _hex_color(color),
                         "page": page_idx,
+                        "rotation": rotation,
                     })
                     span_counter += 1
 
