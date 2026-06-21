@@ -7,7 +7,24 @@
 
 export type ClassLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
 
-export type ClassHighlight = "none" | "sold-out" | "trainer-choice" | "custom";
+// Highlight styles match the original PDF's soft pastel gradient bands:
+//   - "none"             → no background
+//   - "sold-out"         → orange/solid (rare; for hard sold-out)
+//   - "trainer-choice"   → lime
+//   - "theme-pink"       → soft pink gradient (theme row highlight)
+//   - "theme-yellow"     → soft yellow gradient
+//   - "theme-peach"      → soft peach/orange gradient
+//   - "theme-blue"       → soft sky-blue gradient
+//   - "custom"           → use bgColor/textColor
+export type ClassHighlight =
+  | "none"
+  | "sold-out"
+  | "trainer-choice"
+  | "theme-pink"
+  | "theme-yellow"
+  | "theme-peach"
+  | "theme-blue"
+  | "custom";
 
 export interface ScheduleClass {
   id: string;

@@ -41,6 +41,100 @@ DAY_NAMES = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY",
 NOTE_RE = re.compile(r"\s*\(([^)]+)\)\s*$")
 
 
+def _classify_highlight_color(r: int, g: int, b: int) -> str:
+    """Map an RGB pixel to a theme highlight category.
+
+    Based on the actual original PDF, the highlight colors are:
+      - Strong RED (#ef4136) → sold-out (white text, no strikethrough)
+      - Strong ORANGE (#e87a3c / #ec603d) → sold-out variant
+      - LIME green (#cdd750) → trainer-choice (dark text)
+    Everything else (peach/yellow/pastel) is too close to the cream background
+    or anti-aliasing noise to reliably classify — we ignore those.
+    """
+    # Strong red (primary sold-out): R > 200, G < 110, B < 90
+    if r > 200 and g < 110 and b < 90:
+        return "sold-out"
+    # Strong orange (sold-out variant): R > 220, G in 90-160, B < 90
+    if r > 220 and 90 <= g <= 160 and b < 90:
+        return "sold-out"
+    # Lime (trainer's choice): R in 180-230, G > 210, B < 140, G > R > B
+    if 180 <= r <= 240 and g > 210 and b < 140 and g > r > b:
+        return "trainer-choice"
+    return "none"
+
+
+def _scan_row_highlights(path: str) -> list:
+    """Scan every page of the PDF for solid colored row-highlight rectangles.
+
+    Returns a list of (page_idx, x_bucket, y_start, y_end, category) tuples
+    representing contiguous highlight blocks. Each block is a run of consecutive
+    y-rows (within the same x_bucket) that all have the same highlight category.
+
+    Only STRONG colors (red/orange sold-out, lime trainer-choice) are detected.
+    Only the INNER content area is sampled (x in [30, 575]) to avoid the
+    lime page border.
+    """
+    # First pass: collect per-(page, x_bucket, y_bucket) categories
+    raw: dict = {}
+    try:
+        d = fitz.open(path)
+        for page_idx in range(min(2, len(d))):
+            p = d[page_idx]
+            pix = p.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+            pw, ph = pix.width, pix.height
+            x_start = int(30 * 1.5)
+            x_end = int((p.rect.width - 30) * 1.5)
+            for pdf_y in range(300, 820, 2):
+                pix_y = int(pdf_y * 1.5)
+                if pix_y >= ph - 30:
+                    continue
+                col_colors: dict = {}
+                for pix_x in range(x_start, x_end, 4):
+                    c = pix.pixel(pix_x, pix_y)
+                    if not (isinstance(c, (list, tuple)) and len(c) >= 3):
+                        continue
+                    r, g, b = c[0], c[1], c[2]
+                    cat = _classify_highlight_color(r, g, b)
+                    if cat != "none":
+                        pdf_x = pix_x / 1.5
+                        x_bucket = round(pdf_x / 60) * 60
+                        col_colors.setdefault((x_bucket, cat), 0)
+                        col_colors[(x_bucket, cat)] += 1
+                for (x_bucket, cat), count in col_colors.items():
+                    if count >= 8:
+                        y_bucket = round(pdf_y / 4) * 4
+                        raw[(page_idx, x_bucket, y_bucket)] = cat
+        d.close()
+    except Exception:
+        pass
+
+    # Second pass: merge consecutive y-buckets into contiguous blocks
+    blocks: list = []
+    # Group by (page, x_bucket) and sort by y
+    by_col: dict = {}
+    for (page, xb, yb), cat in raw.items():
+        by_col.setdefault((page, xb), []).append((yb, cat))
+    for (page, xb), items in by_col.items():
+        items.sort()
+        cur_start = None
+        cur_end = None
+        cur_cat = None
+        for yb, cat in items:
+            if cur_cat == cat and cur_end is not None and yb - cur_end <= 6:
+                # Extend current block
+                cur_end = yb
+            else:
+                # Flush previous
+                if cur_cat is not None:
+                    blocks.append((page, xb, cur_start, cur_end, cur_cat))
+                cur_start = yb
+                cur_end = yb
+                cur_cat = cat
+        if cur_cat is not None:
+            blocks.append((page, xb, cur_start, cur_end, cur_cat))
+    return blocks
+
+
 def _looks_like_real_class_level_row(text: str) -> bool:
     """Filter out the marquee/ticker text that repeats the class-level prefix."""
     # Real rows are short (< 120 chars), don't contain bullet separators,
@@ -62,6 +156,10 @@ def parse_pdf(path: str) -> dict[str, Any]:
     doc = fitz.open(path)
     page = doc[0]
     page_w, page_h = page.rect.width, page.rect.height
+
+    # Pre-scan all pages for pastel row-highlight rectangles so we can later
+    # map each class row to its highlight category by y-coordinate.
+    row_highlights = _scan_row_highlights(path)
 
     # Collect spans (merge up to 2 pages)
     spans: list[dict] = []
@@ -235,8 +333,18 @@ def parse_pdf(path: str) -> dict[str, Any]:
             continue
         seen_day_names.add(day_key)
 
-        x_min = ds["x"] - 5
-        x_max = ds["x2"] + 80
+        # Define the column boundary tightly around this day header.
+        # The original PDF has 2 columns per page: left column x in [40, 290],
+        # right column x in [310, 570]. We use the day header's x to decide
+        # which column we're in, then bound x_min/x_max to that column only.
+        if ds["x"] < 200:
+            # Left column
+            x_min = 30
+            x_max = 295
+        else:
+            # Right column
+            x_min = 305
+            x_max = 575
         y_top = ds["y2"] + 2
         next_y = None
         for nd in day_spans[idx + 1:]:
@@ -248,8 +356,8 @@ def parse_pdf(path: str) -> dict[str, Any]:
             if s["page"] == ds["page"]
             and s["y"] >= y_top
             and (next_y is None or s["y"] < next_y)
-            and s["x"] >= x_min - 20
-            and s["x"] <= x_max + 60
+            and s["x"] >= x_min
+            and s["x"] <= x_max
             and s["text"].upper() not in DAY_NAMES
         ]
         col_spans.sort(key=lambda s: (s["y"], s["x"]))
@@ -311,13 +419,42 @@ def parse_pdf(path: str) -> dict[str, Any]:
                 cls_name = cls_text
                 instr = ""
 
-            # Detect highlight: white text on colored bg → sold-out
+            # Detect highlight: find a highlight block whose y-range CONTAINS
+            # this class's y position (with a small margin to avoid edge cases
+            # where one class's highlight block touches the next class's row).
             highlight = "none"
             cls_y = r.get("y", 0)
+            cls_x = None
             for s in col_spans:
-                if abs(s["y"] - cls_y) < 6 and s["text"].strip() and s["color"].lower() in ("#ffffff", "#fff"):
-                    highlight = "sold-out"
+                if abs(s["y"] - cls_y) < 6 and s["text"].strip() and not TIME_RE.match(s["text"]):
+                    cls_x = s["x"]
                     break
+            if cls_x is not None:
+                x_bucket = round(cls_x / 60) * 60
+                # A class is highlighted only if its y is well inside a block
+                # (at least 4pt from the block's edges) — this prevents a tall
+                # highlight block from bleeding into the adjacent class row.
+                for (bpage, bxb, bys, bye, bcat) in row_highlights:
+                    if bpage != ds["page"]:
+                        continue
+                    if abs(bxb - x_bucket) > 60:  # not in this column
+                        continue
+                    if bcat == "none":
+                        continue
+                    # Require the class y to be in the middle 70% of the block
+                    block_h = bye - bys
+                    if block_h <= 0:
+                        continue
+                    margin = max(2, block_h * 0.15)
+                    if bys + margin <= cls_y <= bye - margin:
+                        highlight = bcat
+                        break
+            # Fallback: white text → sold-out
+            if highlight == "none":
+                for s in col_spans:
+                    if abs(s["y"] - cls_y) < 6 and s["text"].strip() and s["color"].lower() in ("#ffffff", "#fff"):
+                        highlight = "sold-out"
+                        break
 
             lvl = "BEGINNER"
             cu = cls_name.upper()
@@ -346,16 +483,14 @@ def parse_pdf(path: str) -> dict[str, Any]:
     #   - topBandBg (lime band at the very top of the page)
     #   - main background (cream)
     #   - accent (italic date color, from spans)
-    #   - soldOutBg / trainerChoiceBg (orange/lime colored row backgrounds)
-    bg = "#ffffff"
+    #   - soldOutBg (red/orange solid color used for sold-out class rows)
+    bg = "#efeede"
     top_band_bg = "#cdd750"
-    sold_out_bg = "#e87a3c"
-    trainer_choice_bg = "#cdd750"
+    sold_out_bg = "#ef4136"  # original PDF uses strong red
 
     try:
         d2 = fitz.open(path)
         p = d2[0]
-        # High-resolution pixmap for accurate color sampling
         pix = p.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
         pw, ph = pix.width, pix.height
 
@@ -369,46 +504,13 @@ def parse_pdf(path: str) -> dict[str, Any]:
             return "#ffffff"
 
         # Top band color = sample just below the very top edge, in the middle.
-        # The ticker spans sit at y ~ 3-12 in PDF coords.
         top_band_bg = _hex_at(pw // 2, int(5 * 1.5))
 
         # Main background = sample the area just below the title text, to the
-        # left of the date (PDF y ~ 220, x ~ 300 in original coords → mid-page).
-        # The very edges of the page are the lime band; the inner area is cream.
+        # left of the date (PDF y ~ 220, x ~ 150 in original coords → mid-page).
         bg = _hex_at(int(150 * 1.5), int(220 * 1.5))
-        # If that sample is still lime-y, try the middle of the day columns area
         if bg.lower().startswith("#d0") or bg.lower().startswith("#c5"):
             bg = _hex_at(int(300 * 1.5), int(700 * 1.5))
-
-        # Scan the day-column area (y from 360 to 800) for colored row blocks.
-        # We're looking for the orange "sold out" color (~#e87a3c) and any
-        # lime (~#cdd750) blocks.
-        orange_candidates: dict[str, int] = {}
-        lime_candidates: dict[str, int] = {}
-        for pdf_y in range(360, 820, 4):
-            pix_y = int(pdf_y * 1.5)
-            if pix_y >= ph - 2:
-                continue
-            for pix_x in range(0, pw, 8):
-                c = pix.pixel(pix_x, pix_y)
-                if not (isinstance(c, (list, tuple)) and len(c) >= 3):
-                    continue
-                r, g, b = c[0], c[1], c[2]
-                # Orange-ish (sold out): R > 200, G in 90-180, B < 100
-                if r > 200 and 90 <= g <= 200 and b < 110 and r > g > b:
-                    key = f"#{r:02x}{g:02x}{b:02x}"
-                    orange_candidates[key] = orange_candidates.get(key, 0) + 1
-                # Lime-ish (trainer's choice): R in 180-230, G > 210, B < 130
-                elif 180 <= r <= 240 and g > 210 and b < 140 and g > r > b:
-                    key = f"#{r:02x}{g:02x}{b:02x}"
-                    lime_candidates[key] = lime_candidates.get(key, 0) + 1
-        if orange_candidates:
-            sold_out_bg = max(orange_candidates.items(), key=lambda kv: kv[1])[0]
-        if lime_candidates:
-            # Don't override if it's the same as top band
-            best = max(lime_candidates.items(), key=lambda kv: kv[1])[0]
-            if best.lower() != top_band_bg.lower():
-                trainer_choice_bg = best
 
         d2.close()
     except Exception:
@@ -435,7 +537,7 @@ def parse_pdf(path: str) -> dict[str, Any]:
         },
         "soldOutBg": sold_out_bg,
         "soldOutText": "#ffffff",
-        "trainerChoiceBg": trainer_choice_bg,
+        "trainerChoiceBg": top_band_bg,
         "cardBg": bg,
         "cardBorder": "#00000022",
         "fontFamilyHeading": "Agrandir, Inter, system-ui, sans-serif",

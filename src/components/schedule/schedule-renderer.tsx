@@ -7,30 +7,66 @@ interface Props {
   doc: ScheduleDocument;
 }
 
+// Highlight styles for special class rows. The original PDF uses:
+//   - sold-out: solid RED background (#ef4136) with white text, no strikethrough
+//   - trainer-choice: solid LIME background with dark text
+// The other "theme-*" categories are soft pastel gradients used in some
+// alternate versions of the schedule (kept for compatibility).
+const HIGHLIGHT_STYLES: Record<Exclude<ClassHighlight, 'none' | 'custom'>, { background: string; textColor: string; soldOut?: boolean }> = {
+  'sold-out': {
+    background: '#ef4136',  // solid red — matches the original PDF
+    textColor: '#ffffff',
+    soldOut: false,  // original PDF does NOT use strikethrough on sold-out rows
+  },
+  'trainer-choice': {
+    background: '#cdd750',  // solid lime — matches the original PDF
+    textColor: '#231f20',
+  },
+  'theme-pink': {
+    background: 'linear-gradient(135deg, rgba(255, 213, 227, 0.74) 0%, rgba(255, 213, 227, 0.54) 100%)',
+    textColor: '#453b2a',
+  },
+  'theme-yellow': {
+    background: 'linear-gradient(135deg, rgba(255, 240, 166, 0.74) 0%, rgba(255, 240, 166, 0.54) 100%)',
+    textColor: '#453b2a',
+  },
+  'theme-peach': {
+    background: 'linear-gradient(135deg, rgba(255, 220, 154, 0.74) 0%, rgba(255, 220, 154, 0.54) 100%)',
+    textColor: '#453b2a',
+  },
+  'theme-blue': {
+    background: 'linear-gradient(135deg, rgba(208, 241, 255, 0.74) 0%, rgba(208, 241, 255, 0.54) 100%)',
+    textColor: '#453b2a',
+  },
+};
+
 /**
  * ScheduleRenderer renders a ScheduleDocument as HTML that visually matches
- * the original uploaded poster:
+ * the original uploaded Physique 57 poster:
  *
- *   ┌───────────────────────────────────────────────────────────┐
- *   │ INTERMEDIATE: CARDIO BARREARRE, MAT 57 • INTERMEDIATE:...│ ← lime band + ticker
- *   │ FOUNDATION : BARRE 57 • FOUNDATION : BARRE 57 • FOUNDAT.. │ ← lime band + ticker
- *   ├───────────────────────────────────────────────────────────┤
- *   │                          ╭─────╮                          │
- *   │      STUDIO SCHEDULE     │BANDRA│   (lime circle badge)   │
- *   │   June 1st - June 7th 2026╰─────╯   (italic lime date)    │
- *   │   BEGINNER : BARRE 57, powerCycle                        │
- *   │   INTERMEDIATE : CARDIO BARRE, MAT 57, FIT, ...          │
- *   │                                                           │
- *   │   MONDAY              TUESDAY          WEDNESDAY   ...    │ ← day headers
- *   │   7:30 AM  MAT 57 - Reshma    7:15 AM  BARRE 57 - Mrig.. │
- *   │   8:30 AM  powerCycle - Anmol 8:00 AM  powerCycle - ...  │
- *   │   ┌─────────────────────────┐                            │
- *   │   │ 7:30 PM powerCycle - Karanvir (HARRY STYLES) │ ← sold-out orange block
- *   │   └─────────────────────────┘                            │
- *   └───────────────────────────────────────────────────────────┘
- *
- * The styling is driven entirely by doc.theme so chat edits to colours /
- * fonts propagate live without changing the layout.
+ *   ┌──────────────────────────────────────────────────────────────┐
+ *   │ ████████████████████████████████████████████████████████████ │ ← lime border (full page)
+ *   │ █  ┌──────────────────────────────────────────────────────┐ █ │
+ *   │ █  │ INTERMEDIATE: CARDIO BARREARRE, MAT 57 • INTERMEDI.. │ █ │ ← lime ticker band
+ *   │ █  │ FOUNDATION : BARRE 57 • FOUNDATION : BARRE 57 • FO.. │ █ │
+ *   │ █  │                                                       │ █ │
+ *   │ █  │  ╭───╮                            ╭───────╮           │ █ │
+ *   │ █  │  │◉  │   STUDIO SCHEDULE          │BANDRA │           │ █ │ ← vinyl logo (left) + circle badge (right)
+ *   │ █  │  ╰───╯   June 1st - June 7th 2026 ╰───────╯           │ █ │ ← italic lime date
+ *   │ █  │           A LINKIN PARK SPECIAL                        │ █ │
+ *   │ █  │   BEGINNER : BARRE 57, powerCycle                     │ █ │
+ *   │ █  │   INTERMEDIATE : CARDIO BARRE, MAT 57, FIT, ...       │ █ │
+ *   │ █  │                                                       │ █ │
+ *   │ █  │   MONDAY              TUESDAY                         │ █ │
+ *   │ █  │   7:30 AM  MAT 57 - Reshma    7:15 AM  BARRE 57 - ... │ █ │
+ *   │ █  │   ╔═══════════════════════════╗                       │ █ │ ← soft pastel gradient highlight
+ *   │ █  │   ║ 7:30 PM powerCycle - Karan║ (HARRY STYLES VS JT)  │ █ │
+ *   │ █  │   ╚═══════════════════════════╝                       │ █ │
+ *   │ █  │   WEDNESDAY           THURSDAY                        │ █ │
+ *   │ █  │   ...                                                   │ █ │
+ *   │ █  └──────────────────────────────────────────────────────┘ █ │
+ *   │ ████████████████████████████████████████████████████████████ │
+ *   └──────────────────────────────────────────────────────────────┘
  */
 export function ScheduleRenderer({ doc }: Props) {
   const t = doc.theme;
@@ -71,19 +107,15 @@ export function ScheduleRenderer({ doc }: Props) {
     });
   }, [doc.tickerBands, t]);
 
-  // Day columns are laid out in a 2×N grid matching the original PDF layout.
   return (
     <div
-      className="schedule-doc"
       style={{
-        background: t.background,
-        color: t.primaryText,
-        fontFamily: t.fontFamilyBody,
+        // Full-page lime background (matches the original PDF's page border)
+        background: t.topBandBg,
+        padding: '14px',
+        boxSizing: 'border-box',
         width: '100%',
         margin: '0 auto',
-        boxSizing: 'border-box',
-        position: 'relative',
-        overflow: 'hidden',
       }}
     >
       <style>{`
@@ -96,159 +128,229 @@ export function ScheduleRenderer({ doc }: Props) {
         }
         .schedule-class-row {
           transition: background .15s ease;
+          border-radius: 6px;
         }
         .schedule-class-row:hover {
-          background: rgba(0,0,0,0.04) !important;
+          filter: brightness(0.97);
         }
         .schedule-sold-out {
           text-decoration: line-through;
           text-decoration-color: #dc2626;
-          text-decoration-thickness: 2px;
+          text-decoration-thickness: 1.8px;
           opacity: 0.95;
         }
       `}</style>
 
-      {/* Lime top band with ticker marquee */}
-      {tickerEls.length > 0 && (
-        <div style={{ background: t.topBandBg }}>{tickerEls}</div>
-      )}
-
-      {/* Header: STUDIO SCHEDULE centered + BANDRA circle badge */}
+      {/* Cream inner card */}
       <div
+        className="schedule-doc"
         style={{
+          background: t.background,
+          color: t.primaryText,
+          fontFamily: t.fontFamilyBody,
           position: 'relative',
-          textAlign: 'center',
-          padding: '32px 24px 16px',
+          overflow: 'hidden',
+          borderRadius: '4px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
         }}
       >
-        {/* Location circle badge — top right */}
-        {doc.location && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '20px',
-              right: '28px',
-              width: '110px',
-              height: '110px',
-              borderRadius: '50%',
-              background: t.topBandBg,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-            }}
-          >
-            <span
-              style={{
-                fontFamily: t.fontFamilyHeading,
-                fontSize: '20px',
-                fontWeight: 800,
-                color: t.primaryText,
-                letterSpacing: '0.04em',
-                textTransform: 'uppercase',
-                lineHeight: 1.0,
-                textAlign: 'center',
-              }}
-            >
-              {doc.location}
-            </span>
-          </div>
+        {/* Lime top band with ticker marquee */}
+        {tickerEls.length > 0 && (
+          <div style={{ background: t.topBandBg }}>{tickerEls}</div>
         )}
 
-        <h1
+        {/* Header: vinyl logo (left) + STUDIO SCHEDULE centered + BANDRA circle (right) */}
+        <div
           style={{
-            fontFamily: t.fontFamilyHeading,
-            fontSize: 'clamp(36px, 5vw, 56px)',
-            lineHeight: 0.95,
-            margin: 0,
-            color: t.primaryText,
-            letterSpacing: '-0.015em',
-            fontWeight: 900,
-            textTransform: 'uppercase',
+            position: 'relative',
+            textAlign: 'center',
+            padding: '24px 24px 14px',
           }}
         >
-          {doc.studioName}
-        </h1>
+          {/* Vinyl record logo — top left */}
+          <VinylLogo accent={t.topBandBg} />
 
-        {doc.dateRange && (
-          <div
-            style={{
-              fontFamily: t.fontFamilyDisplay,
-              fontStyle: 'italic',
-              fontSize: 'clamp(22px, 2.6vw, 32px)',
-              marginTop: '14px',
-              color: t.accent,
-              fontWeight: 700,
-              letterSpacing: '0.005em',
-            }}
-          >
-            {doc.dateRange}
-          </div>
-        )}
+          {/* Location circle badge — top right */}
+          {doc.location && <LocationBadge location={doc.location} accent={t.topBandBg} textColor={t.primaryText} fontFamilyHeading={t.fontFamilyHeading} />}
 
-        {doc.tagline && (
-          <div
+          <h1
             style={{
-              fontFamily: t.fontFamilyBody,
-              fontSize: '9px',
-              color: t.mutedText,
-              marginTop: '6px',
-              letterSpacing: '0.18em',
+              fontFamily: t.fontFamilyHeading,
+              fontSize: 'clamp(32px, 4.5vw, 48px)',
+              lineHeight: 0.95,
+              margin: 0,
+              color: t.primaryText,
+              letterSpacing: '-0.015em',
+              fontWeight: 900,
               textTransform: 'uppercase',
             }}
           >
-            {doc.tagline}
-          </div>
-        )}
-      </div>
+            {doc.studioName}
+          </h1>
 
-      {/* Class-level rows */}
-      {doc.classLevels.length > 0 && (
-        <div
-          style={{
-            textAlign: 'center',
-            padding: '0 24px 18px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px',
-          }}
-        >
-          {doc.classLevels.map((row, i) => (
+          {doc.dateRange && (
             <div
-              key={i}
               style={{
-                fontFamily: t.fontFamilyBody,
-                fontSize: '11px',
-                color: t.primaryText,
-                letterSpacing: '0.01em',
-                fontWeight: 500,
+                fontFamily: t.fontFamilyDisplay,
+                fontStyle: 'italic',
+                fontSize: 'clamp(20px, 2.4vw, 30px)',
+                marginTop: '12px',
+                color: t.accent,
+                fontWeight: 700,
+                letterSpacing: '0.005em',
               }}
             >
-              <span style={{ fontWeight: 700 }}>{row.level}</span>
-              <span style={{ opacity: 0.85 }}> : {row.classes.join(', ')}</span>
+              {doc.dateRange}
             </div>
+          )}
+
+          {doc.tagline && (
+            <div
+              style={{
+                fontFamily: t.fontFamilyBody,
+                fontSize: '9px',
+                color: t.mutedText,
+                marginTop: '6px',
+                letterSpacing: '0.18em',
+                textTransform: 'uppercase',
+              }}
+            >
+              {doc.tagline}
+            </div>
+          )}
+        </div>
+
+        {/* Class-level rows */}
+        {doc.classLevels.length > 0 && (
+          <div
+            style={{
+              textAlign: 'center',
+              padding: '0 24px 16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+            }}
+          >
+            {doc.classLevels.map((row, i) => (
+              <div
+                key={i}
+                style={{
+                  fontFamily: t.fontFamilyBody,
+                  fontSize: '11px',
+                  color: t.primaryText,
+                  letterSpacing: '0.01em',
+                  fontWeight: 500,
+                }}
+              >
+                <span style={{ fontWeight: 700 }}>{row.level}</span>
+                <span style={{ opacity: 0.85 }}> : {row.classes.join(', ')}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Days grid — 2×N matching original 2×2-per-page layout */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '0',
+            padding: '0 24px 28px',
+          }}
+        >
+          {doc.days.map(day => (
+            <DayColumn key={day.id} day={day} doc={doc} />
           ))}
         </div>
-      )}
+      </div>
+    </div>
+  );
+}
 
-      {/* Days grid — matches the original 2×2 (or 2×1) layout per page.
-          The original PDF has 4 days per page in a 2×2 grid:
-            Mon | Tue       Fri | Sat
-            Wed | Thu       Sun |
-          We replicate this layout: 2 columns wide, with days flowing top-to-bottom
-          then left-to-right. */}
+/** Vinyl record logo — black circle with a blue center, like the original Physique 57 logo. */
+function VinylLogo({ accent }: { accent: string }) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: '18px',
+        left: '20px',
+        width: '52px',
+        height: '52px',
+        borderRadius: '50%',
+        background: 'radial-gradient(circle at 50% 50%, #7ecaf0 0%, #7ecaf0 18%, #221e1f 19%, #221e1f 28%, #3a3735 29%, #221e1f 35%, #221e1f 45%, #4a4644 46%, #221e1f 52%, #221e1f 100%)',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.2), inset 0 0 0 1px rgba(255,255,255,0.08)',
+      }}
+      aria-hidden
+    >
+      {/* Ribbon banner */}
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '0',
-          padding: '0 24px 32px',
+          position: 'absolute',
+          bottom: '-6px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: accent,
+          color: '#221e1f',
+          fontSize: '6px',
+          fontWeight: 800,
+          padding: '1px 6px',
+          borderRadius: '2px',
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
         }}
       >
-        {doc.days.map(day => (
-          <DayColumn key={day.id} day={day} doc={doc} />
-        ))}
+        Turns 8
       </div>
+    </div>
+  );
+}
+
+/** Circular location badge in the top-right corner. */
+function LocationBadge({
+  location,
+  accent,
+  textColor,
+  fontFamilyHeading,
+}: {
+  location: string;
+  accent: string;
+  textColor: string;
+  fontFamilyHeading: string;
+}) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: '18px',
+        right: '20px',
+        width: '92px',
+        height: '92px',
+        borderRadius: '50%',
+        background: accent,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.10), inset 0 0 0 2px rgba(255,255,255,0.18)',
+      }}
+    >
+      <span
+        style={{
+          fontFamily: fontFamilyHeading,
+          fontSize: location.length > 8 ? '15px' : '18px',
+          fontWeight: 800,
+          color: textColor,
+          letterSpacing: '0.04em',
+          textTransform: 'uppercase',
+          lineHeight: 1.0,
+          textAlign: 'center',
+          padding: '0 6px',
+        }}
+      >
+        {location}
+      </span>
     </div>
   );
 }
@@ -258,21 +360,20 @@ function DayColumn({ day, doc }: { day: ScheduleDocument['days'][number]; doc: S
   return (
     <div
       style={{
-        padding: '12px 14px 16px',
-        borderRight: `1px solid ${t.cardBorder}`,
-        minHeight: '120px',
+        padding: '10px 12px 14px',
+        minHeight: '100px',
       }}
     >
       <div
         style={{
           fontFamily: t.fontFamilyHeading,
-          fontSize: '15px',
+          fontSize: '14px',
           fontWeight: 800,
           color: t.primaryText,
           letterSpacing: '0.04em',
           textTransform: 'uppercase',
-          paddingBottom: '8px',
-          marginBottom: '8px',
+          paddingBottom: '6px',
+          marginBottom: '6px',
           borderBottom: `1.5px solid ${t.primaryText}`,
         }}
       >
@@ -305,16 +406,17 @@ function ClassRow({ cls, doc }: { cls: ScheduleClass; doc: ScheduleDocument }) {
   let bg = 'transparent';
   let textColor = t.bodyText;
   let isSoldOut = false;
-  if (highlight === 'sold-out') {
-    bg = t.soldOutBg;
-    textColor = t.soldOutText;
-    isSoldOut = true;
-  } else if (highlight === 'trainer-choice') {
-    bg = t.trainerChoiceBg;
-    textColor = t.primaryText;
+  let hasBackground = false;
+  if (highlight !== 'none' && highlight !== 'custom') {
+    const style = HIGHLIGHT_STYLES[highlight];
+    bg = style.background;
+    textColor = style.textColor;
+    isSoldOut = !!style.soldOut;
+    hasBackground = true;
   } else if (highlight === 'custom' && cls.bgColor) {
     bg = cls.bgColor;
     textColor = cls.textColor || t.bodyText;
+    hasBackground = true;
   }
 
   return (
@@ -324,10 +426,11 @@ function ClassRow({ cls, doc }: { cls: ScheduleClass; doc: ScheduleDocument }) {
         display: 'flex',
         alignItems: 'flex-start',
         gap: '8px',
-        padding: '3px 6px',
-        margin: '0 -6px 1px',
+        padding: hasBackground ? '5px 8px' : '3px 6px',
+        margin: hasBackground ? '2px -4px 3px' : '0 -2px 1px',
         background: bg,
-        borderRadius: highlight !== 'none' ? '3px' : '0',
+        boxShadow: hasBackground ? '0 4px 10px rgba(69,59,42,0.06)' : 'none',
+        backdropFilter: hasBackground ? 'blur(8px) saturate(140%)' : 'none',
         position: 'relative',
       }}
     >
@@ -335,11 +438,11 @@ function ClassRow({ cls, doc }: { cls: ScheduleClass; doc: ScheduleDocument }) {
       <div
         style={{
           fontFamily: t.fontFamilyBody,
-          fontSize: '9.5px',
+          fontSize: '9px',
           fontWeight: 600,
           color: textColor,
           textAlign: 'right',
-          width: '62px',
+          width: '58px',
           flexShrink: 0,
           fontVariantNumeric: 'tabular-nums',
           letterSpacing: '-0.1px',
@@ -353,7 +456,7 @@ function ClassRow({ cls, doc }: { cls: ScheduleClass; doc: ScheduleDocument }) {
           flex: 1,
           minWidth: 0,
           fontFamily: t.fontFamilyBody,
-          fontSize: '9.5px',
+          fontSize: '9px',
           color: textColor,
           fontWeight: 500,
           lineHeight: 1.3,
@@ -378,9 +481,9 @@ function ClassRow({ cls, doc }: { cls: ScheduleClass; doc: ScheduleDocument }) {
             style={{
               fontSize: '6.5px',
               fontWeight: 400,
-              opacity: 0.9,
+              opacity: 0.85,
               marginTop: '1px',
-              letterSpacing: '0.08em',
+              letterSpacing: '0.06em',
               textTransform: 'uppercase',
             }}
           >
