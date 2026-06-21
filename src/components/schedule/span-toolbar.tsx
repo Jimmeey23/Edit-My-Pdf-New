@@ -11,11 +11,11 @@ import { cn } from '@/lib/utils';
  * letter spacing, and delete the span.
  */
 export function SpanToolbar() {
-  const { document, editingSpanId, setSpanStyle, deleteSpan } = useInlineStore();
-  if (!document || !editingSpanId) return null;
+  const { document: doc, editingSpanId, setSpanStyle, deleteSpan } = useInlineStore();
+  if (!doc || !editingSpanId) return null;
 
   let span: any = null;
-  for (const page of document.pages) {
+  for (const page of doc.pages) {
     span = page.spans.find(s => s.id === editingSpanId);
     if (span) break;
   }

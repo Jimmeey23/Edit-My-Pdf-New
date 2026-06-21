@@ -13,9 +13,9 @@ interface Props {
 }
 
 export function InlinePageRenderer({ page, displayScale }: Props) {
-  const { document, editingSpanId, startEditing, stopEditing, setSpanTextDirect, setSpanText } = useInlineStore();
+  const { document: doc, editingSpanId, startEditing, stopEditing, setSpanTextDirect, setSpanText } = useInlineStore();
 
-  if (!document) return null;
+  if (!doc) return null;
 
   const cssWidth = page.pdfWidth * displayScale;
   const cssHeight = page.pdfHeight * displayScale;
@@ -57,8 +57,8 @@ export function InlinePageRenderer({ page, displayScale }: Props) {
 
 /** Wrapper that positions the toolbar near the selected span. */
 function SpanToolbarWrapper({ page, displayScale }: { page: SchedulePage; displayScale: number }) {
-  const { document, editingSpanId } = useInlineStore();
-  if (!document || !editingSpanId) return null;
+  const { document: doc, editingSpanId } = useInlineStore();
+  if (!doc || !editingSpanId) return null;
   const span = page.spans.find(s => s.id === editingSpanId);
   if (!span) return null;
   const left = span.x * displayScale;
@@ -134,7 +134,7 @@ function EditableSpan({
   useEffect(() => {
     if (isEditing && ref.current) {
       ref.current.focus();
-      const range = document.createRange();
+      const range = window.document.createRange();
       range.selectNodeContents(ref.current);
       const sel = window.getSelection();
       sel?.removeAllRanges();

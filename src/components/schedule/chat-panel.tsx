@@ -16,7 +16,7 @@ const SUGGESTIONS = [
 export function ChatPanel() {
   const {
     messages, isChatting, chatError,
-    document, pushMessage, applyOps, setChatting, setChatError,
+    document: doc, pushMessage, applyOps, setChatting, setChatError,
   } = useInlineStore();
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -27,7 +27,7 @@ export function ChatPanel() {
 
   const send = useCallback(async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || !document || isChatting) return;
+    if (!trimmed || !doc || isChatting) return;
     setInput('');
     pushMessage({ role: 'user', content: trimmed });
     setChatting(true);
@@ -38,7 +38,7 @@ export function ChatPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: trimmed,
-          document,
+          document: doc,
           history: messages.slice(-6).map(m => ({ role: m.role, content: m.content })),
         }),
       });
@@ -62,7 +62,7 @@ export function ChatPanel() {
     } finally {
       setChatting(false);
     }
-  }, [document, isChatting, messages, pushMessage, applyOps, setChatting, setChatError]);
+  }, [doc, isChatting, messages, pushMessage, applyOps, setChatting, setChatError]);
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-zinc-950 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
@@ -116,13 +116,13 @@ export function ChatPanel() {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={document ? "Ask to change any text…" : "Upload a schedule first…"}
-          disabled={!document || isChatting}
+          placeholder={doc ? "Ask to change any text…" : "Upload a schedule first…"}
+          disabled={!doc || isChatting}
           className="flex-1 px-3 py-2 text-sm rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-transparent focus:border-emerald-400 focus:bg-white dark:focus:bg-zinc-950 outline-none transition-colors disabled:opacity-50"
         />
         <button
           type="submit"
-          disabled={!document || isChatting || !input.trim()}
+          disabled={!doc || isChatting || !input.trim()}
           className="px-3 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white text-sm font-medium hover:shadow-lg hover:shadow-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1.5"
         >
           <Send className="w-3.5 h-3.5" />

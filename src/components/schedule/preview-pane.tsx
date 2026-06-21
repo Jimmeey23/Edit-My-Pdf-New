@@ -13,7 +13,7 @@ interface Props {
 type ViewMode = 'original' | 'edited' | 'split';
 
 export function PreviewPane({ onBackToUpload }: Props) {
-  const { document, previewUrl, history, undo, redo, redoStack, hasUnviewedEdits, markEditsViewed } = useInlineStore();
+  const { document: doc, previewUrl, history, undo, redo, redoStack, hasUnviewedEdits, markEditsViewed } = useInlineStore();
   const [view, setView] = useState<ViewMode>('edited');
   const [showHistory, setShowHistory] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -34,7 +34,7 @@ export function PreviewPane({ onBackToUpload }: Props) {
     }
   }, [view, hasUnviewedEdits, markEditsViewed]);
 
-  if (!document) return null;
+  if (!doc) return null;
 
   const handleExport = async () => {
     setExporting(true);
@@ -42,12 +42,13 @@ export function PreviewPane({ onBackToUpload }: Props) {
       const res = await fetch('/api/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ document }),
+        body: JSON.stringify({ document: doc }),
       });
       if (!res.ok) throw new Error('Export failed');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      // Use window.document to avoid shadowing by the store's `document` field
+      const a = window.document.createElement('a');
       a.href = url;
       a.download = `schedule-edited.pdf`;
       a.click();
@@ -61,7 +62,7 @@ export function PreviewPane({ onBackToUpload }: Props) {
 
   const hasEdits = history.length > 0;
   // Display scale: fit the PDF width to ~700px by default, adjustable with zoom
-  const baseScale = 700 / document.pages[0].pdfWidth;
+  const baseScale = 700 / doc.pages[0].pdfWidth;
   const displayScale = baseScale * zoom;
 
   return (
@@ -156,14 +157,14 @@ export function PreviewPane({ onBackToUpload }: Props) {
         <div ref={scrollRef} className={cn("flex-1 overflow-auto min-h-0", showHistory && "lg:flex-[3]")}>
           {view === 'edited' && (
             <div className="min-h-full p-4 lg:p-6 flex flex-col items-center gap-4">
-              {document.pages.map(page => (
+              {doc.pages.map(page => (
                 <InlinePageRenderer key={page.index} page={page} displayScale={displayScale} />
               ))}
             </div>
           )}
           {view === 'original' && (
             <div className="min-h-full p-4 lg:p-6 flex flex-col items-center gap-4">
-              {document.pages.map((page, i) => (
+              {doc.pages.map((page, i) => (
                 <img
                   key={i}
                   src={previewUrl && i === 0 ? previewUrl : page.backgroundImage}
@@ -179,7 +180,7 @@ export function PreviewPane({ onBackToUpload }: Props) {
               <div className="flex flex-col min-h-0">
                 <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2">Original</div>
                 <div className="flex-1 overflow-auto rounded-lg bg-zinc-100/50 dark:bg-zinc-900/50 p-3 min-h-0">
-                  {document.pages.map((page, i) => (
+                  {doc.pages.map((page, i) => (
                     <img
                       key={i}
                       src={previewUrl && i === 0 ? previewUrl : page.backgroundImage}
@@ -192,7 +193,7 @@ export function PreviewPane({ onBackToUpload }: Props) {
               <div className="flex flex-col min-h-0">
                 <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide mb-2">Edited (click to edit)</div>
                 <div className="flex-1 overflow-auto rounded-lg bg-zinc-100/50 dark:bg-zinc-900/50 p-3 min-h-0 flex flex-col items-center gap-3">
-                  {document.pages.map(page => (
+                  {doc.pages.map(page => (
                     <InlinePageRenderer key={page.index} page={page} displayScale={displayScale * 0.85} />
                   ))}
                 </div>
