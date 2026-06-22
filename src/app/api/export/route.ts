@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     }
 
     const html = renderInlineHTML(document);
-    const tmpDir = '/home/z/my-project/uploads/exports';
+    const tmpDir = path.join(process.cwd(), 'uploads', 'exports');
     await mkdir(tmpDir, { recursive: true });
     const htmlPath = path.join(tmpDir, `export-${Date.now()}.html`);
     const pdfPath = htmlPath.replace('.html', '.pdf');

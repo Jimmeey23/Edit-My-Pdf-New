@@ -8,7 +8,7 @@ import ZAI from 'z-ai-web-dev-sdk';
 
 const execFileAsync = promisify(execFile);
 
-const UPLOAD_DIR = '/home/z/my-project/uploads';
+const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
