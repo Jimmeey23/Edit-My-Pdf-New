@@ -68,6 +68,40 @@ function uid(prefix = '') {
 /** Apply a single inline edit operation to a cloned document (immutable). */
 function applyOp(doc: InlineScheduleDocument, op: InlineEditOp): InlineScheduleDocument {
   const next = clone(doc);
+
+  if (op.type === 'removeRowAndShift') {
+    for (const page of next.pages) {
+      if (op.page !== undefined && page.index !== op.page) continue;
+      const cs = op.caseSensitive ?? false;
+      const findStr = cs ? op.find : op.find.toLowerCase();
+      const matching = page.spans.filter(span => {
+        if (span.hidden) return false;
+        const t = cs ? span.text : span.text.toLowerCase();
+        return t.includes(findStr);
+      });
+      if (matching.length === 0) continue;
+      const rowY = Math.min(...matching.map(s => s.y));
+      const rowY2 = Math.max(...matching.map(s => s.y2));
+      const rowH = rowY2 - rowY;
+      const tol = Math.max(rowH * 0.35, 3);
+      const rowIds = new Set<string>();
+      for (const span of page.spans) {
+        if (span.hidden) continue;
+        if (span.y >= rowY - tol && span.y2 <= rowY2 + tol) rowIds.add(span.id);
+      }
+      for (const span of page.spans) {
+        if (rowIds.has(span.id)) {
+          span.hidden = true;
+        } else if (!span.hidden && span.y >= rowY2 - tol) {
+          span.y = Math.round((span.y - rowH) * 100) / 100;
+          span.y2 = Math.round((span.y2 - rowH) * 100) / 100;
+        }
+      }
+    }
+    next.updatedAt = new Date().toISOString();
+    return next;
+  }
+
   for (const page of next.pages) {
     for (const span of page.spans) {
       applyOpToSpan(span, op);

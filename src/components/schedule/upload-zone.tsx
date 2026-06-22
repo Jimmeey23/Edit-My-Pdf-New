@@ -47,8 +47,8 @@ export function UploadZone() {
           "relative cursor-pointer rounded-2xl border-2 border-dashed transition-all",
           "flex flex-col items-center justify-center text-center p-10 min-h-[280px]",
           isDragging
-            ? "border-emerald-400 bg-emerald-50 scale-[1.01]"
-            : "border-zinc-300 dark:border-zinc-700 hover:border-emerald-400 hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
+            ? "border-violet-400 bg-violet-50 scale-[1.01]"
+            : "border-zinc-300 dark:border-zinc-700 hover:border-violet-400 hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
         )}
       >
         <input
@@ -65,7 +65,7 @@ export function UploadZone() {
 
         {isParsing ? (
           <>
-            <Loader2 className="w-10 h-10 text-emerald-500 animate-spin mb-4" />
+            <Loader2 className="w-10 h-10 text-violet-500 animate-spin mb-4" />
             <p className="text-base font-medium text-zinc-700 dark:text-zinc-200">
               Loading your schedule…
             </p>
@@ -75,7 +75,7 @@ export function UploadZone() {
           </>
         ) : (
           <>
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/20">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mb-4 shadow-lg shadow-violet-500/20">
               <Upload className="w-7 h-7 text-white" />
             </div>
             <p className="text-base font-semibold text-zinc-800 dark:text-zinc-100">

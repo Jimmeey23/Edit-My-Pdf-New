@@ -47,7 +47,6 @@ export function PreviewPane({ onBackToUpload }: Props) {
       if (!res.ok) throw new Error('Export failed');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      // Use window.document to avoid shadowing by the store's `document` field
       const a = window.document.createElement('a');
       a.href = url;
       a.download = `schedule-edited.pdf`;
@@ -61,7 +60,6 @@ export function PreviewPane({ onBackToUpload }: Props) {
   };
 
   const hasEdits = history.length > 0;
-  // Display scale: fit the PDF width to ~700px by default, adjustable with zoom
   const baseScale = 700 / doc.pages[0].pdfWidth;
   const displayScale = baseScale * zoom;
 
@@ -109,25 +107,31 @@ export function PreviewPane({ onBackToUpload }: Props) {
         <button
           onClick={undo}
           disabled={history.length === 0}
-          className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-          title="Undo"
+          className="p-1.5 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed group"
+          title={`Undo${history[0] ? ` "${history[0].summary}"` : ''}`}
         >
-          <Undo2 className="w-4 h-4 text-zinc-600 dark:text-zinc-300" />
+          <Undo2 className="w-4 h-4 text-zinc-600 dark:text-zinc-300 group-hover:text-violet-600 dark:group-hover:text-violet-400 group-disabled:group-hover:text-zinc-600" />
         </button>
         <button
           onClick={redo}
           disabled={redoStack.length === 0}
-          className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="p-1.5 rounded-lg hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed group"
           title="Redo"
         >
-          <Redo2 className="w-4 h-4 text-zinc-600 dark:text-zinc-300" />
+          <Redo2 className="w-4 h-4 text-zinc-600 dark:text-zinc-300 group-hover:text-violet-600 dark:group-hover:text-violet-400" />
         </button>
+
+        {hasEdits && (
+          <span className="text-[10px] text-violet-600 dark:text-violet-400 font-medium px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-900/30">
+            {history.length} edit{history.length !== 1 ? 's' : ''}
+          </span>
+        )}
 
         <button
           onClick={() => setShowHistory(s => !s)}
           className={cn(
             "p-1.5 rounded-lg transition-colors",
-            showHistory ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300"
+            showHistory ? "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300"
           )}
           title="History"
         >
@@ -137,7 +141,7 @@ export function PreviewPane({ onBackToUpload }: Props) {
         <button
           onClick={handleExport}
           disabled={exporting}
-          className="px-2.5 py-1.5 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white text-xs font-medium hover:shadow-lg hover:shadow-emerald-500/20 disabled:opacity-50 transition-all flex items-center gap-1.5"
+          className="px-2.5 py-1.5 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-white text-xs font-medium hover:shadow-lg hover:shadow-violet-500/20 disabled:opacity-50 transition-all flex items-center gap-1.5"
         >
           {exporting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
           <span className="hidden sm:inline">Export PDF</span>
@@ -146,7 +150,7 @@ export function PreviewPane({ onBackToUpload }: Props) {
 
       {/* Inline-edit hint banner */}
       {view === 'edited' && (
-        <div className="px-4 py-1.5 bg-emerald-50 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-emerald-900/50 flex items-center gap-2 text-[11px] text-emerald-700 dark:text-emerald-300">
+        <div className="px-4 py-1.5 bg-violet-50 dark:bg-violet-950/30 border-b border-violet-100 dark:border-violet-900/50 flex items-center gap-2 text-[11px] text-violet-700 dark:text-violet-300">
           <MousePointerClick className="w-3.5 h-3.5" />
           <span>Click any text in the schedule to edit it directly. Press Enter to save, Esc to cancel.</span>
         </div>
@@ -191,7 +195,7 @@ export function PreviewPane({ onBackToUpload }: Props) {
                 </div>
               </div>
               <div className="flex flex-col min-h-0">
-                <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide mb-2">Edited (click to edit)</div>
+                <div className="text-xs font-semibold text-violet-700 dark:text-violet-300 uppercase tracking-wide mb-2">Edited (click to edit)</div>
                 <div className="flex-1 overflow-auto rounded-lg bg-zinc-100/50 dark:bg-zinc-900/50 p-3 min-h-0 flex flex-col items-center gap-3">
                   {doc.pages.map(page => (
                     <InlinePageRenderer key={page.index} page={page} displayScale={displayScale * 0.85} />
@@ -204,11 +208,11 @@ export function PreviewPane({ onBackToUpload }: Props) {
 
         {showEditsToast && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2.5 pl-3 pr-2 py-2 rounded-full bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-xl text-xs font-medium">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-400 dark:text-emerald-600" />
+            <Sparkles className="w-3.5 h-3.5 text-violet-400 dark:text-violet-600" />
             <span>Edits applied — switch to Edit view to see them</span>
             <button
               onClick={() => setView('edited')}
-              className="ml-1 px-2.5 py-1 rounded-full bg-emerald-500 text-white text-[11px] font-semibold hover:bg-emerald-600"
+              className="ml-1 px-2.5 py-1 rounded-full bg-violet-500 text-white text-[11px] font-semibold hover:bg-violet-600"
             >
               View
             </button>
@@ -225,15 +229,20 @@ export function PreviewPane({ onBackToUpload }: Props) {
           <div className="w-64 border-l border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-y-auto">
             <div className="px-3 py-2.5 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
               <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide">History</span>
-              <span className="text-[10px] text-zinc-500">{history.length}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-zinc-500">{history.length} edit{history.length !== 1 ? 's' : ''}</span>
+              </div>
             </div>
             <div className="p-2 space-y-1">
               {history.length === 0 ? (
                 <p className="text-xs text-zinc-500 italic px-2 py-4 text-center">No edits yet</p>
               ) : (
-                history.map(h => (
-                  <div key={h.id} className="text-xs px-2.5 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800">
-                    <p className="text-zinc-700 dark:text-zinc-200 font-medium">{h.summary}</p>
+                history.map((h, i) => (
+                  <div key={h.id} className={cn(
+                    "text-xs px-2.5 py-2 rounded-lg",
+                    i === 0 ? "bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-800/50" : "bg-zinc-50 dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  )}>
+                    <p className={cn("font-medium", i === 0 ? "text-violet-700 dark:text-violet-300" : "text-zinc-700 dark:text-zinc-200")}>{h.summary}</p>
                     <p className="text-[10px] text-zinc-500 mt-0.5">{new Date(h.ts).toLocaleTimeString()}</p>
                   </div>
                 ))
@@ -258,7 +267,7 @@ function TogBtn({
       className={cn(
         "relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all",
         hideOnMobile && "hidden md:flex",
-        active ? "bg-white dark:bg-zinc-950 text-emerald-700 dark:text-emerald-300 shadow-sm" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+        active ? "bg-white dark:bg-zinc-950 text-violet-700 dark:text-violet-300 shadow-sm" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
       )}
     >
       <Icon className="w-3.5 h-3.5" />
@@ -267,7 +276,7 @@ function TogBtn({
         {sublabel && <span className="text-[9px] opacity-70 -mt-0.5">{sublabel}</span>}
       </span>
       {pulse && (
-        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 animate-pulse ring-2 ring-white dark:ring-zinc-950" />
+        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-violet-500 animate-pulse ring-2 ring-white dark:ring-zinc-950" />
       )}
     </button>
   );

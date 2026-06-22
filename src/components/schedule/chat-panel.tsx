@@ -66,8 +66,8 @@ export function ChatPanel() {
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-zinc-950 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
-      <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-2 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shrink-0">
+      <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-2 bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/30">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shrink-0">
           <Sparkles className="w-4 h-4 text-white" />
         </div>
         <div className="flex-1 min-w-0">
@@ -100,7 +100,7 @@ export function ChatPanel() {
             <button
               key={s}
               onClick={() => send(s)}
-              className="text-[11px] px-2.5 py-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
+              className="text-[11px] px-2.5 py-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 hover:text-violet-700 dark:hover:text-violet-300 transition-colors"
             >
               {s}
             </button>
@@ -118,12 +118,12 @@ export function ChatPanel() {
           onChange={(e) => setInput(e.target.value)}
           placeholder={doc ? "Ask to change any text…" : "Upload a schedule first…"}
           disabled={!doc || isChatting}
-          className="flex-1 px-3 py-2 text-sm rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-transparent focus:border-emerald-400 focus:bg-white dark:focus:bg-zinc-950 outline-none transition-colors disabled:opacity-50"
+          className="flex-1 px-3 py-2 text-sm rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-transparent focus:border-violet-400 focus:bg-white dark:focus:bg-zinc-950 outline-none transition-colors disabled:opacity-50"
         />
         <button
           type="submit"
           disabled={!doc || isChatting || !input.trim()}
-          className="px-3 py-2 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white text-sm font-medium hover:shadow-lg hover:shadow-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1.5"
+          className="px-3 py-2 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-white text-sm font-medium hover:shadow-lg hover:shadow-violet-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1.5"
         >
           <Send className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">Send</span>
@@ -147,7 +147,7 @@ function MessageBubble({ role, content, summary }: { role: 'user' | 'assistant';
         className={cn(
           "max-w-[80%] px-3 py-2 rounded-2xl text-sm",
           isUser
-            ? "bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-tr-sm"
+            ? "bg-gradient-to-br from-violet-500 to-purple-600 text-white rounded-tr-sm"
             : "bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-100 rounded-tl-sm"
         )}
       >
@@ -172,7 +172,7 @@ function UserAvatar() {
 
 function BotAvatar() {
   return (
-    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shrink-0">
+    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shrink-0">
       <Bot className="w-3.5 h-3.5 text-white" />
     </div>
   );

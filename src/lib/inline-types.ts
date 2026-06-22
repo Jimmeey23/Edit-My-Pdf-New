@@ -53,6 +53,7 @@ export type InlineEditOp =
   | { type: 'setSpanTextByContent'; find: string; text: string; caseSensitive?: boolean; page?: number }
   | { type: 'hideSpan'; spanId: string }
   | { type: 'hideSpansByContent'; find: string; caseSensitive?: boolean; page?: number }
+  | { type: 'removeRowAndShift'; find: string; caseSensitive?: boolean; page?: number }
   | { type: 'setSpanStyle'; spanId: string; changes: Partial<Pick<TextSpan, 'size' | 'color' | 'bold' | 'italic' | 'align' | 'letterSpacing'>> };
 
 export interface ChatResponse {
