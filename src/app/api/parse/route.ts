@@ -36,7 +36,8 @@ async function imageToDataUrl(imagePath: string): Promise<string> {
 /** Parse a PDF using the inline parser (text spans + redacted background). */
 async function parsePdfInline(pdfPath: string): Promise<any> {
   const scriptPath = path.join(process.cwd(), 'scripts', 'parse_pdf_inline.py');
-  const { stdout } = await execFileAsync('python3', [scriptPath, pdfPath], { maxBuffer: 50 * 1024 * 1024 });
+  const python3 = process.env.PYTHON3_PATH || '/home/runner/workspace/.pythonlibs/bin/python3';
+  const { stdout } = await execFileAsync(python3, [scriptPath, pdfPath], { maxBuffer: 50 * 1024 * 1024 });
   return JSON.parse(stdout);
 }
 
