@@ -100,7 +100,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'message and document are required' }, { status: 400 });
     }
 
-    const zai = await ZAI.create();
+    const baseUrl = process.env.ZAI_BASE_URL;
+    const apiKey = process.env.ZAI_API_KEY;
+    if (!baseUrl || !apiKey) {
+      return NextResponse.json({ error: 'Z.ai API credentials not configured. Please set ZAI_BASE_URL and ZAI_API_KEY.' }, { status: 500 });
+    }
+    const zai = new ZAI({ baseUrl, apiKey } as any);
     const docSummary = buildDocSummary(body.document);
 
     const historyMessages = (body.history || []).slice(-6).map(m => ({
