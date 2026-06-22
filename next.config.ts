@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  allowedDevOrigins: ["*"],
+  allowedDevOrigins: ["*.pike.replit.dev", "*.replit.dev"],
 };
 
 export default nextConfig;

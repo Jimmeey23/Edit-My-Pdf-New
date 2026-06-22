@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import ZAI from 'z-ai-web-dev-sdk';
+import OpenAI from 'openai';
 import type { InlineScheduleDocument, InlineEditOp } from '@/lib/inline-types';
 
 export const runtime = 'nodejs';
@@ -100,12 +100,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'message and document are required' }, { status: 400 });
     }
 
-    const baseUrl = process.env.ZAI_BASE_URL;
-    const apiKey = process.env.ZAI_API_KEY;
-    if (!baseUrl || !apiKey) {
-      return NextResponse.json({ error: 'Z.ai API credentials not configured. Please set ZAI_BASE_URL and ZAI_API_KEY.' }, { status: 500 });
-    }
-    const zai = new ZAI({ baseUrl, apiKey } as any);
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const docSummary = buildDocSummary(body.document);
 
     const historyMessages = (body.history || []).slice(-6).map(m => ({
@@ -113,16 +108,16 @@ export async function POST(req: NextRequest) {
       content: m.content,
     })) as Array<{ role: 'user' | 'assistant'; content: string }>;
 
-    const messages = [
-      { role: 'assistant' as const, content: SYSTEM_PROMPT },
-      { role: 'user' as const, content: `CURRENT DOCUMENT SPANS:\n${docSummary}` },
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: `CURRENT DOCUMENT SPANS:\n${docSummary}` },
       ...historyMessages,
-      { role: 'user' as const, content: body.message },
+      { role: 'user', content: body.message },
     ];
 
-    const completion = await zai.chat.completions.create({
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4.1-mini',
       messages,
-      thinking: { type: 'disabled' },
     });
 
     const raw = completion.choices[0]?.message?.content ?? '';
